@@ -26,7 +26,7 @@
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { normalizeConfig, diagnose } from './rules.js';
+import { normalizeConfig, diagnose, decide } from './rules.js';
 import { createBaselineConfig } from './baseline.js';
 
 export const ROUTE_PATH = '/toolwarden/api';
@@ -129,6 +129,29 @@ export function mountApi(ctx, deps) {
             config = {};
           }
           const { rules, problems } = normalizeConfig(config);
+
+          // 目录里出现过的服务器就是「已知服务器」。用它跑 decide()，
+          // 让页面拿到的开关状态与引擎在注册期的判定完全一致。
+          // 不这么做的话，配置里的服务器白名单 / 总开关在页面上完全不可见：
+          // 页面只会去读 tools，于是把引擎已经丢掉的工具显示成「开」——那是在说谎。
+          const knownServers = new Set();
+          const groups = [...catalog.groups()];
+          for (const [, entries] of groups) {
+            for (const e of entries) {
+              if (typeof e.server === 'string' && e.server !== '') knownServers.add(e.server);
+            }
+          }
+
+          /** 把 decide() 的 reason 归成页面要显示的来源分类。 */
+          const sourceOf = reason => {
+            if (reason === 'protected') return 'protected';
+            if (reason.startsWith('tool override')) return 'tool';
+            if (reason.startsWith('not in ') || reason.startsWith('server ')) return 'server';
+            if (reason.startsWith('unknown server')) return 'unknown';
+            if (reason === 'rewrite configured') return 'rewrite';
+            return 'none';
+          };
+
           return ok(res, {
             ok: true,
             patched: s.patched,
@@ -137,17 +160,23 @@ export function mountApi(ctx, deps) {
             stats: s.stats,
             problems: [...problems, ...s.problems],
             diagnostics: s.diagnostics,
-            groups: [...catalog.groups()].map(([group, entries]) => ({
+            groups: groups.map(([group, entries]) => ({
               group,
-              roles: entries.map(e => ({
-                name: e.name,
-                server: e.server,
-                leaf: e.leaf,
-                protected: e.protected,
-                chars: e.originalChars,
-                descChars: e.originalDescChars,
-                originalDescription: e.description,
-              })),
+              roles: entries.map(e => {
+                const verdict = decide(e.name, rules, knownServers);
+                return {
+                  name: e.name,
+                  server: e.server,
+                  leaf: e.leaf,
+                  protected: e.protected,
+                  chars: e.originalChars,
+                  descChars: e.originalDescChars,
+                  originalDescription: e.description,
+                  // 引擎的实际判定，页面开关以此为准
+                  effective: verdict.action === 'drop' ? 'drop' : 'keep',
+                  source: sourceOf(verdict.reason),
+                };
+              }),
             })),
             rules: {
               servers: Object.fromEntries(

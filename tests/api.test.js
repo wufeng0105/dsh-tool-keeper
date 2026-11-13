@@ -196,6 +196,96 @@ test('api: state 在配置损坏时仍返回 200（页面不能白屏）', async
 });
 
 // ─────────────────────────────────────────────
+// effective：页面开关必须以引擎判定为准
+// ─────────────────────────────────────────────
+function findRole(state, name) {
+  for (const g of state.groups) {
+    for (const r of g.roles) if (r.name === name) return r;
+  }
+  return undefined;
+}
+
+test('api: 每个工具都带 effective 与 source', async () => {
+  const { captured, dir, dispose } = setup();
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  const all = r.json.groups.flatMap(g => g.roles);
+  assert.ok(all.length > 0);
+  for (const role of all) {
+    assert.ok(role.effective === 'keep' || role.effective === 'drop', role.name + ' 缺 effective');
+    assert.equal(typeof role.source, 'string', role.name + ' 缺 source');
+  }
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: 服务器白名单会反映到 effective（页面不会把被丢的显示成开）', async () => {
+  const { captured, configPath, dir, dispose } = setup();
+  writeFileSync(configPath, JSON.stringify({
+    enabled: true,
+    servers: { tinyfish: { keep: ['search'] } },
+    tools: {}, rewrite: {},
+  }));
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  const state = r.json;
+
+  // 目录里有 search，但它不在 catalog 里（本 fixture 只登记了一个 tinyfish 工具），
+  // 所以这里验证的是：decide 真的被调用了，source 不是永远 'none'
+  const role = findRole(state, 'mcp__tinyfish__search');
+  assert.ok(role !== undefined, '用例需要 catalog 里有该工具');
+  assert.equal(role.effective, 'keep', '在白名单里，应为 keep');
+  assert.equal(role.source, 'none', '白名单内且命中，走 default');
+
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: 服务器总开关关闭时，该服务器工具 effective=drop 且 source=server', async () => {
+  const { captured, configPath, dir, dispose } = setup();
+  writeFileSync(configPath, JSON.stringify({
+    enabled: true,
+    servers: { tinyfish: { enabled: false } },
+    tools: {}, rewrite: {},
+  }));
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  const role = findRole(r.json, 'mcp__tinyfish__search');
+  assert.ok(role !== undefined);
+  assert.equal(role.effective, 'drop', '服务器被关掉，工具应判定为丢');
+  assert.equal(role.source, 'server', '来源要标明是服务器级规则');
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: 单工具规则优先于服务器规则', async () => {
+  const { captured, configPath, dir, dispose } = setup();
+  writeFileSync(configPath, JSON.stringify({
+    enabled: true,
+    servers: { tinyfish: { enabled: false } },
+    tools: { 'mcp__tinyfish__search': 'keep' },
+    rewrite: {},
+  }));
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  const role = findRole(r.json, 'mcp__tinyfish__search');
+  assert.equal(role.effective, 'keep', '单工具 keep 应压过服务器总开关');
+  assert.equal(role.source, 'tool');
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: 保护工具永远 effective=keep 且 source=protected', async () => {
+  const { captured, configPath, dir, dispose } = setup();
+  writeFileSync(configPath, JSON.stringify({
+    enabled: true, servers: {}, tools: { read: 'drop' }, rewrite: {},
+  }));
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  const role = findRole(r.json, 'read');
+  assert.ok(role !== undefined);
+  assert.equal(role.effective, 'keep', '保护工具任何配置都关不掉');
+  assert.equal(role.source, 'protected');
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ─────────────────────────────────────────────
 // op = set
 // ─────────────────────────────────────────────
 test('api: set 写入 tools 并返回 needRestart', async () => {

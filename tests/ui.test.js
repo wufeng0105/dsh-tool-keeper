@@ -43,16 +43,16 @@ function makeData(overrides = {}) {
       {
         group: 'core',
         roles: [
-          { name: 'read', protected: true, chars: 5986, originalDescription: '读取文件内容。' },
-          { name: 'pwsh', protected: true, chars: 5700, originalDescription: '执行 PowerShell。' },
-          { name: 'create_goal', protected: false, chars: 320, originalDescription: '创建一个目标。' },
+          { name: 'read', protected: true, effective: 'keep', source: 'protected', chars: 5986, originalDescription: '读取文件内容。' },
+          { name: 'pwsh', protected: true, effective: 'keep', source: 'protected', chars: 5700, originalDescription: '执行 PowerShell。' },
+          { name: 'create_goal', protected: false, effective: 'keep', source: 'none', chars: 320, originalDescription: '创建一个目标。' },
         ],
       },
       {
         group: 'mcp:tinyfish',
         roles: [
-          { name: 'mcp__tinyfish__search', server: 'tinyfish', protected: false, chars: 2080, originalDescription: '搜索网页。' },
-          { name: 'mcp__tinyfish__fetch_content', server: 'tinyfish', protected: false, chars: 1020, originalDescription: '抓取网页正文。' },
+          { name: 'mcp__tinyfish__search', server: 'tinyfish', protected: false, effective: 'keep', source: 'none', chars: 2080, originalDescription: '搜索网页。' },
+          { name: 'mcp__tinyfish__fetch_content', server: 'tinyfish', protected: false, effective: 'keep', source: 'none', chars: 1020, originalDescription: '抓取网页正文。' },
         ],
       },
     ],
@@ -220,11 +220,11 @@ test('ui: 非保护工具显示开关', () => {
   assert.equal(switches.length, 3, '三个非保护工具三个开关');
 });
 
-test('ui: 保护工具不显示开关，标「基础工具」', () => {
+test('ui: 保护工具不显示开关，标「受保护」', () => {
   const html = renderView(makeData());
   const locks = html.match(/class="tw-lock"/g) || [];
   assert.equal(locks.length, 2);
-  assert.ok(html.includes('基础工具'));
+  assert.ok(html.includes('受保护'));
 });
 
 test('ui: 出厂状态全部开关为开', () => {
@@ -310,10 +310,70 @@ test('ui: 有隐藏时才在摘要里提节省', () => {
   assert.ok(!none.includes('每轮省'), '没有隐藏时不该提节省');
 
   const data = makeData();
-  data.rules.tools['mcp__tinyfish__fetch_content'] = 'drop';
+  // 状态读的是 effective（引擎判定），不是 rules.tools
+  data.groups[1].roles[1].effective = 'drop';
+  data.groups[1].roles[1].source = 'tool';
   const some = renderView(data);
   assert.ok(some.includes('每轮省'), '有隐藏时应提节省');
   assert.ok(/已隐藏 1 个/.test(some));
+});
+
+// ─────────────────────────────────────────────
+// 开关状态必须来自引擎判定，不能自己从 rules.tools 推
+// ─────────────────────────────────────────────
+test('ui: 服务器白名单导致的隐藏，开关显示为关', () => {
+  const data = makeData();
+  // 配置里 tinyfish 只留 search；fetch_content 被服务器白名单丢掉
+  data.groups[1].roles[1].effective = 'drop';
+  data.groups[1].roles[1].source = 'server';
+  // rules.tools 里什么都没有 —— 旧实现会把它显示成「开」，那是说谎
+  data.rules.tools = {};
+
+  const html = renderView(data);
+  const checked = html.match(/aria-checked="true"/g) || [];
+  assert.equal(checked.length, 2, '被服务器规则丢掉的工具不能显示为开');
+  assert.ok(html.includes('服务器规则关闭'), '必须说明为什么这一行是关的');
+});
+
+test('ui: rules.tools 里的 drop 不直接决定开关（以 effective 为准）', () => {
+  const data = makeData();
+  // tools 说 drop，但引擎判定 keep（例如保护工具覆盖了一切）
+  data.rules.tools['create_goal'] = 'drop';
+  data.groups[0].roles[2].effective = 'keep';
+  data.groups[0].roles[2].source = 'tool';
+
+  const html = renderView(data);
+  const checked = html.match(/aria-checked="true"/g) || [];
+  assert.equal(checked.length, 3, '开关只认 effective，不认 rules.tools');
+});
+
+test('ui: 内置工具的说明标签不写「服务器」', () => {
+  const html = renderView(makeData(), { expandedName: 'create_goal' });
+  assert.ok(html.includes('原始说明'), '内置工具应有「原始说明」标签');
+  assert.ok(!html.includes('服务器原始说明'), '内置工具没有服务器，不能这么写');
+});
+
+test('ui: MCP 工具仍写「服务器原始说明」', () => {
+  const html = renderView(makeData(), { expandedName: 'mcp__tinyfish__search' });
+  assert.ok(html.includes('服务器原始说明'));
+});
+
+test('ui: 摘要跟着搜索变，不与列表矛盾', () => {
+  const all = renderView(makeData());
+  assert.ok(/共 5 个工具/.test(all), '未搜索时显示全量');
+
+  const filtered = renderView(makeData(), { query: 'tinyfish' });
+  assert.ok(/筛选出 2 个工具/.test(filtered), '搜索后显示筛选结果数');
+  assert.ok(/全部 5 个/.test(filtered), '同时给出全量，便于知道筛掉了多少');
+  assert.ok(!/共 5 个工具/.test(filtered), '不能再说「共 5 个」而屏幕上只有 2 行');
+});
+
+test('ui: 受保护工具标记为「受保护」且有解释', () => {
+  const html = renderView(makeData());
+  assert.ok(html.includes('受保护'));
+  assert.ok(!html.includes('基础工具'), '统一叫「受保护」');
+  // 页面上必须有解释，否则用户不知道为什么这些行没有开关
+  assert.ok(/任何配置都关不掉/.test(html));
 });
 
 test('ui: 分组头部不放批量开关按钮', () => {

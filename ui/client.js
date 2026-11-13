@@ -79,7 +79,7 @@ window.__ModuleLoader__.load({
 
       /* ── 列表与行 ── */
       '.tw-list{display:flex;flex-direction:column;border-top:1px solid var(--dsw-alias-border-l2)}',
-      '.tw-itemT{display:flex;flex-direction:column}',
+      '.tw-item{display:flex;flex-direction:column}',
       '.tw-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:44px;padding:6px 10px;transition:background 150ms ease}',
       '.tw-row:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.tw-icon{flex:none;width:34px;height:34px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-1);display:flex;align-items:center;justify-content:center;position:relative}',
@@ -223,8 +223,10 @@ window.__ModuleLoader__.load({
 
     function ToolRow(props) {
       var role = props.role;
-      var hidden = props.hidden === true;
+      var hidden = role.effective === 'drop';
       var isMcp = typeof role.server === 'string' && role.server !== '';
+      // 状态来自服务器级规则时必须说出来，否则用户不知道为什么这一行是关的
+      var fromServer = role.source === 'server';
 
       return h('div', { className: 'tw-row' },
         h('span', { className: 'tw-icon', 'data-state': hidden ? 'off' : 'on' },
@@ -239,11 +241,13 @@ window.__ModuleLoader__.load({
             onClick: props.onExpand,
           }, role.name),
           h('span', { className: 'tw-meta' },
-            num(role.chars) + ' 字符 · ≈' + num(estimateTokens(role.chars)) + ' tokens' +
-            (role.rewritten ? ' · 已改写' : '')),
+            num(role.chars) + ' 字符 · ≈' + num(estimateTokens(role.chars)) + ' tokens',
+            props.rewritten ? ' · 已改写' : null,
+            fromServer ? ' · 服务器规则关闭' : null,
+          ),
         ),
         role.protected
-          ? h('span', { className: 'tw-lock' }, '基础工具')
+          ? h('span', { className: 'tw-lock' }, '受保护')
           : h(Switch, {
             checked: hidden !== true,
             disabled: props.busy,
@@ -255,12 +259,14 @@ window.__ModuleLoader__.load({
 
     /** 展开的编辑区：左原文右改写，两框等高同宽。 */
     function ToolDetail(props) {
+      var isMcp = typeof props.role.server === 'string' && props.role.server !== '';
       return h('div', { className: 'tw-detail' },
         h('div', { className: 'tw-fields' },
           h('div', { className: 'tw-field' },
-            h('span', { className: 'tw-fieldLabel' }, '服务器原始说明'),
+            // 内置工具没有服务器，不能一律写「服务器原始说明」
+            h('span', { className: 'tw-fieldLabel' }, isMcp ? '服务器原始说明' : '原始说明'),
             h('div', { className: 'tw-box tw-original' },
-              props.originalDescription || '（服务器没有提供说明）'),
+              props.originalDescription || '（没有提供说明）'),
           ),
           h('div', { className: 'tw-field' },
             h('span', { className: 'tw-fieldLabel' }, '改写为（留空恢复原文）'),
@@ -290,7 +296,7 @@ window.__ModuleLoader__.load({
       var section = props.section;
       var roles = section.roles;
       var open = props.open !== false;
-      var hiddenCount = roles.filter(function (r) { return props.tools[r.name] === 'drop'; }).length;
+      var hiddenCount = roles.filter(function (r) { return r.effective === 'drop'; }).length;
       var chars = roles.reduce(function (n, r) { return n + r.chars; }, 0);
       var isMcp = section.group !== 'core';
 
@@ -317,10 +323,10 @@ window.__ModuleLoader__.load({
           ? h('div', { className: 'tw-list' },
             roles.map(function (role) {
               var expanded = props.expandedName === role.name;
-              return h('div', { key: role.name, className: 'tw-itemT' },
+              return h('div', { key: role.name, className: 'tw-item' },
                 h(ToolRow, {
                   role: role,
-                  hidden: props.tools[role.name] === 'drop',
+                  rewritten: props.rewrittenNames[role.name] === true,
                   busy: props.busy,
                   expanded: expanded,
                   onExpand: function () { props.onExpand(role.name); },
@@ -332,7 +338,7 @@ window.__ModuleLoader__.load({
                     originalDescription: role.originalDescription,
                     draft: props.draft,
                     busy: props.busy,
-                    dirty: props.draft !== (role.currentRewrite || ''),
+                    dirty: props.draft !== (props.rewrites[role.name] || {}).description,
                     onDraft: props.onDraft,
                     onSave: function () { props.onSaveRewrite(role.name, props.draft); },
                   })
@@ -346,23 +352,26 @@ window.__ModuleLoader__.load({
     /** 纯展示组件：给 data 就出 HTML。 */
     function ToolwardenView(props) {
       var data = props.data;
-      var tools = data.rules.tools || {};
       var rewrites = data.rules.rewrites || {};
       var query = (props.query || '').trim().toLowerCase();
       var collapsed = props.collapsed || {};
 
-      var all = [];
-      data.groups.forEach(function (g) {
-        g.roles.forEach(function (r) {
-          var entry = rewrites[r.name];
-          r.rewritten = entry !== undefined && entry.description !== undefined;
-          r.currentRewrite = entry === undefined ? '' : (entry.description || '');
-          all.push(r);
-        });
+      // 改写状态做成查表，不改入参对象
+      var rewrittenNames = {};
+      Object.keys(rewrites).forEach(function (name) {
+        var entry = rewrites[name];
+        if (entry !== undefined && entry.description !== undefined) rewrittenNames[name] = true;
       });
 
+      var all = [];
+      data.groups.forEach(function (g) { all = all.concat(g.roles); });
+
+      // 开关状态一律读引擎判定（effective），不自己从 tools 推。
+      // 从 tools 推会漏掉服务器白名单与总开关，把被丢掉的工具显示成「开」。
+      var isHidden = function (role) { return role.effective === 'drop'; };
+
       var chars = all.reduce(function (n, r) { return n + r.chars; }, 0);
-      var hidden = all.filter(function (r) { return tools[r.name] === 'drop'; });
+      var hidden = all.filter(isHidden);
       var savedChars = hidden.reduce(function (n, r) { return n + r.chars; }, 0);
 
       var groups = data.groups.map(function (g) {
@@ -374,6 +383,13 @@ window.__ModuleLoader__.load({
         return matched.length === 0 ? null : { group: g.group, roles: matched };
       }).filter(function (g) { return g !== null; });
 
+      // 摘要必须描述「屏幕上的这些工具」，不是全量。
+      // 搜索时还说「共 105 个」而屏幕上只有 2 行，就是自相矛盾。
+      var visible = [];
+      groups.forEach(function (g) { visible = visible.concat(g.roles); });
+      var visibleChars = visible.reduce(function (n, r) { return n + r.chars; }, 0);
+      var visibleHidden = visible.filter(isHidden);
+
       var allCollapsed = groups.length > 0 && groups.every(function (g) {
         return collapsed[g.group] === true;
       });
@@ -383,7 +399,7 @@ window.__ModuleLoader__.load({
         h('div', { className: 'tw-head' },
           h('h2', { className: 'tw-title' }, '工具守卫'),
           h('p', { className: 'tw-intro' },
-            '决定哪些工具进入模型的上下文。关掉当前用不到的工具，让每轮请求少带一些 schema。'),
+            '决定哪些工具进入模型的上下文。关掉用不到的，让每轮请求少带一份工具定义。'),
         ),
 
         data.patched === false
@@ -401,7 +417,7 @@ window.__ModuleLoader__.load({
           ? h('p', { className: 'tw-note', 'data-tone': 'bad' }, props.error) : null,
         props.pending
           ? h('p', { className: 'tw-note', 'data-tone': 'warn' },
-            '已保存到配置。重启 DSH 后对新注册的工具生效。') : null,
+            '已保存到配置。重启 DSH 后生效。') : null,
 
         /* 工具栏 */
         h('div', { className: 'tw-toolbar' },
@@ -425,16 +441,19 @@ window.__ModuleLoader__.load({
             h('button', {
               className: 'tw-btn',
               onClick: props.onReload, disabled: props.busy,
-            }, props.busy ? '处理中…' : '刷新'),
+            }, '刷新'),
           ),
         ),
 
-        /* 摘要：一行小字。注意 children 要分开传，字符串 + 元素会得到 [object Object] */
+        /* 摘要：描述屏幕上的这些工具。搜索时跟着变，否则会和列表自相矛盾。 */
         h('p', { className: 'tw-summary' },
-          '共 ' + all.length + ' 个工具 · ≈' + num(estimateTokens(chars)) + ' tokens',
-          hidden.length > 0
+          (query === '' ? '共 ' : '筛选出 ') + visible.length + ' 个工具 · ≈' +
+          num(estimateTokens(visibleChars)) + ' tokens' +
+          (query !== '' ? '（全部 ' + all.length + ' 个）' : ''),
+          visibleHidden.length > 0
             ? h('span', { className: 'tw-saving' },
-              ' · 已隐藏 ' + hidden.length + ' 个，每轮省 ≈' + num(estimateTokens(savedChars)) + ' tokens')
+              ' · 已隐藏 ' + visibleHidden.length + ' 个，每轮省 ≈' +
+              num(estimateTokens(visibleHidden.reduce(function (n, r) { return n + r.chars; }, 0))) + ' tokens')
             : null,
         ),
         h('div', { className: 'tw-divider' }),
@@ -450,7 +469,8 @@ window.__ModuleLoader__.load({
               return h(ToolGroup, {
                 key: g.group,
                 section: g,
-                tools: tools,
+                rewrites: rewrites,
+                rewrittenNames: rewrittenNames,
                 busy: props.busy,
                 open: collapsed[g.group] !== true,
                 expandedName: props.expandedName,
@@ -463,14 +483,14 @@ window.__ModuleLoader__.load({
               });
             })),
 
-        /* 底部：危险操作 */
+        /* 底部：危险操作 + 本页唯一的规则说明 */
         h('div', { className: 'tw-footer' },
           h('button', {
             className: 'tw-btn', 'data-kind': 'danger',
             onClick: props.onReset, disabled: props.busy,
           }, '恢复出厂'),
           h('p', { className: 'tw-footerNote' },
-            '清空全部规则，所有工具回到默认开启。'),
+            '清空全部规则，所有工具回到默认开启。标「受保护」的工具任何配置都关不掉。'),
         ),
       );
     }
