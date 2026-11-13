@@ -481,10 +481,11 @@ test('ui: 恢复出厂只在底部出现一次', () => {
   assert.ok(html.includes('tw-footer'), '应位于底部区域');
 });
 
-test('ui: 工具栏有搜索、全部折叠、刷新', () => {
+test('ui: 工具栏有搜索、折叠、刷新', () => {
   const html = renderView(makeData());
   assert.ok(html.includes('tw-search'));
-  assert.ok(html.includes('全部折叠'));
+  assert.ok(html.includes('折叠'));
+  assert.ok(!html.includes('全部折叠'), '用短文案，不占宽度');
   assert.ok(html.includes('刷新'));
 });
 
@@ -518,12 +519,12 @@ test('ui: 工具栏两个按钮同宽，文字居中', () => {
   const { mod } = loadUi();
   const css = mod.__testing.CSS;
 
-  // 宽度必须写死，不能由文字长度撑出来，否则「全部折叠」和「刷新」不一样宽
+  // 宽度必须写死，不能由文字长度撑出来，否则四个按钮宽窄不一
   const rule = css.match(/\.tw-actions \.tw-btn\{([^}]*)\}/);
   assert.ok(rule !== null, '必须有 .tw-actions .tw-btn 规则');
   const w = rule[1].match(/width:(\d+)px/);
   assert.ok(w !== null, '工具栏按钮要定宽');
-  assert.equal(w[1], '92');
+  assert.equal(w[1], '72');
 
   // 定宽后 padding 必须严格为 0，否则文字会被挤偏
   // 注意：捕获组不含结尾的 }，所以用行尾锚定；不能只写 /padding:0/——
@@ -542,7 +543,7 @@ test('ui: 工具栏四个按钮渲染出来结构一致', () => {
   const actions = html.match(/<div class="tw-actions">[\s\S]*?<\/div>/);
   assert.ok(actions !== null);
   const btns = actions[0].match(/<button[^>]*class="tw-btn"[^>]*>/g) || [];
-  assert.equal(btns.length, 4, '工具栏应恰好四个按钮（全部折叠/刷新/导出/导入）');
+  assert.equal(btns.length, 4, '工具栏应恰好四个按钮（折叠/刷新/导出/导入）');
   // 四个按钮的 class 属性必须完全一致（宽度由 CSS 统一，不靠字面）
   const classes = btns.map(b => (b.match(/class="([^"]*)"/) || [])[1]);
   for (const cls of classes) assert.equal(cls, classes[0], '四个按钮的 class 必须一致');

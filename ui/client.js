@@ -8,7 +8,7 @@
  *
  *   标题行    标题 + 一句话说明 —— 就这些。状态用提示条表达，不挂常驻标签，
  *            因为底部已有「恢复出厂」，顶部再放「出厂状态」是重复
- *   工具栏    搜索 + 全部折叠 + 刷新 —— 三个都是高频；不再放组内批量按钮
+ *   工具栏    搜索 + 折叠 + 刷新 + 导出 + 导入
  *   摘要      一行小字，只在隐藏过时提节省
  *   分组卡片  可折叠，头部只放标题与计数
  *   行        图标 + 名称 + 副标题 + 开关
@@ -49,8 +49,8 @@ window.__ModuleLoader__.load({
       '.tw-search::placeholder{color:var(--dsw-alias-label-tertiary)}',
       '.tw-search:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}',
       '.tw-actions{display:flex;align-items:center;gap:8px;flex:none}',
-      /* 工具栏两个按钮定死同宽：宽度不能由文字长度撑出来，否则「全部折叠」比「刷新」宽一截 */
-      '.tw-actions .tw-btn{width:92px;padding:0}',
+      /* 工具栏四个按钮定死同宽：宽度不能由文字长度撑出来，否则宽窄不一 */
+      '.tw-actions .tw-btn{width:72px;padding:0}',
       '.tw-actions .tw-btn[data-kind=danger]{width:auto;padding:0 14px}',
 
       /* ── 摘要 ── */
@@ -446,7 +446,7 @@ window.__ModuleLoader__.load({
               className: 'tw-btn',
               disabled: groups.length === 0,
               onClick: function () { props.onCollapseAll(!allCollapsed); },
-            }, allCollapsed ? '全部展开' : '全部折叠'),
+            }, allCollapsed ? '展开' : '折叠'),
             h('button', {
               className: 'tw-btn',
               onClick: props.onReload, disabled: props.busy,
