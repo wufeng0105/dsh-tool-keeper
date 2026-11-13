@@ -4,13 +4,22 @@
  * 装载协议与官方 bundle 相同：window.__ModuleLoader__.load({ id, factory })。
  * 数据只走 /toolwarden/api 的 op：state / set / reset。
  *
- * ## 页面纪律（抄 dsh-enhance 的成文规矩）
+ * ## 排版刻度（对齐宿主设置页，参照本机 dsh-enhance 的实现）
  *
- * 1. 一屏只说明一件事：工具占了多少上下文，关掉哪些。
- * 2. 每个控件只说一次后果，不重复。
- * 3. 纯宿主样式：颜色/圆角/字号走 --dsw-alias-* token，不画页面底色、不换字体族。
- * 4. 只画真实能力：改完需要重启就明说，不做假按钮。
- * 5. 出厂不做任何管理——所以首屏的常态是「全部工具都开着」，这是对的，不是坏了。
+ *   标题    16/24  weight 500   label-primary
+ *   行标题  14/22  weight 400   label-primary
+ *   说明    12/18               label-tertiary
+ *   现状    12/18  nowrap       label-secondary，按状态着色
+ *   分组    .5px solid 发丝线分隔，组间 16px
+ *   宽度    720px 上限
+ *   控件    宿主 switch / segmented，不自己画按钮外观
+ *
+ * ## 页面纪律
+ *
+ * 1. 一个控件只说一次后果。
+ * 2. 只画真实能力：要重启就说要重启。没有的按钮不画。
+ * 3. 数字要可核对：字符数来自 catalog 的原始定义，token 是估算且标注。
+ * 4. 保护工具不显示开关——画一个必然点不动的开关是骗人。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-toolwarden-ui',
@@ -23,29 +32,68 @@ window.__ModuleLoader__.load({
     var ENDPOINT = '/toolwarden/api';
     var CSS_TAG = 'dsh-toolwarden-ui/settings.css';
 
+    // 刻度直接对齐宿主：字号/行高/间距/描边都走 token，不写字面色值。
     var CSS = [
-      '.tw{max-width:720px;font-size:14px;line-height:22px;}',
-      '.tw h2{font-size:16px;line-height:24px;margin:0 0 4px;font-weight:600;}',
-      '.tw .tw-sub{color:var(--dsw-alias-text-secondary);margin:0 0 16px;}',
-      '.tw .tw-sec{border-top:0.5px solid var(--dsw-alias-border);padding:12px 0;}',
-      '.tw .tw-sec:first-of-type{border-top:0;}',
-      '.tw .tw-row{display:flex;align-items:center;gap:8px;min-height:28px;}',
-      '.tw .tw-name{flex:1;font-family:ui-monospace,monospace;font-size:13px;}',
-      '.tw .tw-chars{color:var(--dsw-alias-text-secondary);font-size:12px;min-width:88px;text-align:right;}',
-      '.tw .tw-tag{font-size:11px;padding:1px 6px;border-radius:4px;background:var(--dsw-alias-bg-tint);color:var(--dsw-alias-text-secondary);}',
-      '.tw .tw-grouphead{display:flex;align-items:center;gap:8px;margin:8px 0 4px;font-weight:600;}',
-      '.tw .tw-grouphead .tw-count{color:var(--dsw-alias-text-secondary);font-weight:400;font-size:12px;}',
-      '.tw button{font:inherit;padding:3px 10px;border-radius:6px;border:0.5px solid var(--dsw-alias-border);background:var(--dsw-alias-bg);color:inherit;cursor:pointer;}',
-      '.tw button:hover{background:var(--dsw-alias-bg-tint);}',
-      '.tw button:disabled{opacity:.5;cursor:not-allowed;}',
-      '.tw .tw-note{margin-top:8px;padding:8px 10px;border-radius:6px;background:var(--dsw-alias-bg-tint);font-size:12px;}',
-      '.tw .tw-warn{background:var(--dsw-alias-bg-warning-tint,rgba(255,180,0,.12));}',
-      '.tw .tw-err{background:var(--dsw-alias-bg-danger-tint,rgba(255,80,80,.12));}',
-      '.tw .tw-empty{color:var(--dsw-alias-text-secondary);padding:12px 0;}',
-      '.tw .tw-stat{display:flex;gap:24px;margin:8px 0 12px;}',
-      '.tw .tw-stat div{display:flex;flex-direction:column;}',
-      '.tw .tw-stat b{font-size:20px;line-height:26px;font-weight:600;}',
-      '.tw .tw-stat span{font-size:12px;color:var(--dsw-alias-text-secondary);}',
+      '.tw{display:flex;flex-direction:column;gap:12px;width:100%;max-width:720px;padding:4px 0 24px;box-sizing:border-box;font-family:var(--dsw-font-family);color:var(--dsw-alias-label-primary)}',
+
+      // ── 页头 ──
+      '.tw-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}',
+      '.tw-title{margin:0;font-size:16px;line-height:24px;font-weight:500;color:var(--dsw-alias-label-primary)}',
+      '.tw-intro{margin:0;font-size:14px;line-height:22px;color:var(--dsw-alias-label-tertiary)}',
+      '.tw-pill{flex:none;font-size:12px;line-height:16px;padding:2px 8px;border-radius:var(--dsw-radius-xs);border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);white-space:nowrap}',
+      '.tw-pill[data-tone=ok]{color:var(--dsw-alias-state-success-primary);border-color:currentColor}',
+      '.tw-pill[data-tone=warn]{color:var(--dsw-alias-state-warn-primary);border-color:currentColor}',
+      '.tw-pill[data-tone=bad]{color:var(--dsw-alias-state-error-primary);border-color:currentColor}',
+
+      // ── 概览条 ──
+      '.tw-stats{display:flex;flex-wrap:wrap;gap:28px;padding:12px 0}',
+      '.tw-stat{display:flex;flex-direction:column;gap:2px;min-width:88px}',
+      '.tw-stat-num{font-size:20px;line-height:26px;font-weight:500;color:var(--dsw-alias-label-primary)}',
+      '.tw-stat-label{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}',
+
+      // ── 分组 ──
+      '.tw-group{display:flex;flex-direction:column;gap:12px;min-width:0}',
+      '.tw-group+.tw-group{border-top:.5px solid var(--dsw-alias-border-l2);padding-top:16px}',
+      '.tw-row-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;min-width:0}',
+      '.tw-h3{margin:0;font-size:14px;line-height:22px;font-weight:400;color:var(--dsw-alias-label-primary)}',
+      '.tw-sub{margin:2px 0 0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary)}',
+      '.tw-now{flex:none;font-size:12px;line-height:18px;white-space:nowrap;color:var(--dsw-alias-label-secondary)}',
+      '.tw-now[data-tone=ok]{color:var(--dsw-alias-state-success-primary)}',
+      '.tw-now[data-tone=warn]{color:var(--dsw-alias-state-warn-primary)}',
+
+      // ── 工具清单 ──
+      '.tw-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}',
+      '.tw-item{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:12px;align-items:center;padding:8px 0;border-top:.5px solid var(--dsw-alias-border-l2);font-size:13px;line-height:20px}',
+      '.tw-item:first-child{border-top:0}',
+      '.tw-item[data-hidden=true] .tw-name{color:var(--dsw-alias-label-tertiary)}',
+      '.tw-name{font-family:var(--ds-font-family-code);font-size:12px;line-height:18px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.tw-meta{font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);white-space:nowrap}',
+      '.tw-protected{font-size:11px;line-height:16px;padding:1px 6px;border-radius:var(--dsw-radius-xs);border:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-tertiary);white-space:nowrap}',
+
+      // ── 开关（照宿主 switch 的形态）──
+      '.tw-switch{display:inline-flex;align-items:center;gap:8px;flex:none;font:inherit;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary);background:none;border:none;padding:0;cursor:pointer}',
+      '.tw-switch:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}',
+      '.tw-track{width:30px;height:16px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-border-l2);position:relative;flex:none;transition:background var(--ds-transition-duration-fast) var(--ds-ease-in-out)}',
+      '.tw-switch[aria-checked=true] .tw-track{background:var(--dsw-alias-state-success-primary)}',
+      '.tw-knob{position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--dsw-alias-bg-base);transition:transform var(--ds-transition-duration-fast) var(--ds-ease-in-out)}',
+      '.tw-switch[aria-checked=true] .tw-knob{transform:translateX(14px)}',
+
+      // ── 按钮 ──
+      '.tw-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}',
+      '.tw-btn{font:inherit;font-size:13px;line-height:20px;padding:4px 12px;min-width:72px;border-radius:var(--dsw-radius-sm);border:1px solid var(--dsw-alias-border-l2);background:none;color:var(--dsw-alias-label-primary);cursor:pointer;transition:background var(--ds-transition-duration-fast) var(--ds-ease-in-out)}',
+      '.tw-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}',
+      '.tw-btn[data-kind=danger]{color:var(--dsw-alias-state-error-primary);border-color:currentColor}',
+      '.tw-btn:disabled{color:var(--dsw-alias-label-tertiary);border-color:var(--dsw-alias-border-l2);background:none;cursor:default}',
+
+      // ── 提示与诊断 ──
+      '.tw-note{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary);border-left:2px solid var(--dsw-alias-border-l2);padding:2px 0 2px 12px;overflow-wrap:anywhere}',
+      '.tw-note[data-tone=warn]{color:var(--dsw-alias-state-warn-primary);border-left-color:currentColor}',
+      '.tw-note[data-tone=bad]{color:var(--dsw-alias-state-error-primary);border-left-color:currentColor}',
+      '.tw-empty{margin:0;font-size:12px;line-height:18px;color:var(--dsw-alias-label-tertiary);padding:8px 0}',
+
+      // ── 焦点环：与宿主设置页同一套 token ──
+      '.tw-switch:focus-visible,.tw-btn:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-brand-primary));outline-offset:2px}',
+      '@media (prefers-reduced-motion: reduce){.tw-track,.tw-knob,.tw-btn{transition:none}}',
     ].join('\n');
 
     function call(body) {
@@ -65,54 +113,76 @@ window.__ModuleLoader__.load({
       });
     }
 
-    /** 字节 → 人读的 token 估算（口径：字符 ÷ 3.5，与文档一致） */
+    /** 字符 → token 估算。口径：字符 ÷ 3.5，界面上必须标「估算」。 */
     function estimateTokens(chars) {
       return Math.round(chars / 3.5);
     }
 
-    function formatNumber(n) {
+    function num(n) {
       return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
-    // ---------------------------------------------------------------- 组件
-
-    function ToolRow(props) {
-      const { role, state, onToggle, busy } = props;
-      // state: 'keep' | 'drop'
-      const dropped = state === 'drop';
-      return h('div', { className: 'tw-row' },
-        h('span', { className: 'tw-name' }, role.name),
-        role.protected ? h('span', { className: 'tw-tag' }, '受保护') : null,
-        h('span', { className: 'tw-chars' }, formatNumber(role.chars) + ' 字符'),
-        h('button', {
-          disabled: role.protected || busy,
-          title: role.protected ? '基础工具，任何配置都关不掉' : (dropped ? '点击恢复' : '点击隐藏'),
-          onClick: function () { onToggle(role.name, dropped ? 'keep' : 'drop'); },
-        }, role.protected ? '不可关' : (dropped ? '已隐藏' : '隐藏')),
+    /** 开关。状态未知不画成「关」——那是在撒谎。 */
+    function Switch(props) {
+      return h('button', {
+        type: 'button',
+        className: 'tw-switch',
+        role: 'switch',
+        'aria-checked': props.checked === true,
+        disabled: props.disabled === true,
+        title: props.title,
+        onClick: props.onClick,
+      },
+        h('span', { className: 'tw-track' }, h('span', { className: 'tw-knob' })),
+        props.label === undefined ? null : h('span', null, props.label),
       );
     }
 
-    function GroupBlock(props) {
-      const { group, roles, tools, onToggle, busy } = props;
-      const totalChars = roles.reduce(function (n, r) { return n + r.chars; }, 0);
-      const hiddenCount = roles.filter(function (r) { return tools[r.name] === 'drop' || (r.server && group === 'mcp:' + r.server && false); }).length;
+    function ToolItem(props) {
+      const { role, hidden, busy, onToggle } = props;
+      return h('li', { className: 'tw-item', 'data-hidden': hidden === true },
+        h('span', { className: 'tw-name', title: role.name }, role.name),
+        h('span', { className: 'tw-meta' }, num(role.chars) + ' 字符'),
+        role.protected
+          // 受保护工具不画开关：画一个必然点不动的开关是骗人
+          ? h('span', { className: 'tw-protected' }, '基础工具')
+          : h(Switch, {
+            checked: hidden !== true,
+            disabled: busy,
+            title: hidden === true ? '当前不进入上下文，点击启用' : '当前进入上下文，点击隐藏',
+            onClick: function () { onToggle(role.name, hidden === true ? 'keep' : 'drop'); },
+          }),
+      );
+    }
 
-      return h('div', { className: 'tw-sec' },
-        h('div', { className: 'tw-grouphead' },
-          h('span', null, group === 'core' ? '内置工具' : 'MCP · ' + group.replace(/^mcp:/, '')),
-          h('span', { className: 'tw-count' },
-            roles.length + ' 个 · ' + formatNumber(totalChars) + ' 字符 · ≈' +
-            formatNumber(estimateTokens(totalChars)) + ' tokens'),
+    function Group(props) {
+      const { group, roles, tools, busy, onToggle } = props;
+      const chars = roles.reduce(function (n, r) { return n + r.chars; }, 0);
+      const hiddenCount = roles.filter(function (r) { return tools[r.name] === 'drop'; }).length;
+      const label = group === 'core' ? '内置工具' : 'MCP · ' + group.replace(/^mcp:/, '');
+      const allHidden = hiddenCount === roles.length && roles.length > 0;
+
+      return h('section', { className: 'tw-group' },
+        h('div', { className: 'tw-row-head' },
+          h('div', { style: { minWidth: 0 } },
+            h('h3', { className: 'tw-h3' }, label),
+            h('p', { className: 'tw-sub' },
+              roles.length + ' 个工具 · ' + num(chars) + ' 字符 · ≈' + num(estimateTokens(chars)) + ' tokens'),
+          ),
+          h('span', {
+            className: 'tw-now',
+            'data-tone': hiddenCount === 0 ? undefined : (allHidden ? 'warn' : undefined),
+          }, hiddenCount === 0 ? '全部启用' : hiddenCount + ' 个已隐藏'),
         ),
-        roles.map(function (role) {
-          return h(ToolRow, {
+        h('ul', { className: 'tw-list' }, roles.map(function (role) {
+          return h(ToolItem, {
             key: role.name,
             role: role,
-            state: tools[role.name] === 'drop' ? 'drop' : 'keep',
-            onToggle: onToggle,
+            hidden: tools[role.name] === 'drop',
             busy: busy,
+            onToggle: onToggle,
           });
-        }),
+        })),
       );
     }
 
@@ -120,44 +190,44 @@ window.__ModuleLoader__.load({
       const [data, setData] = React.useState(null);
       const [error, setError] = React.useState(null);
       const [busy, setBusy] = React.useState(false);
-      const [dirty, setDirty] = React.useState(false);
+      const [pending, setPending] = React.useState(false);
 
       const load = React.useCallback(function () {
         setError(null);
         call({ op: 'state' }).then(function (payload) {
           setData(payload);
-          setDirty(false);
         }).catch(function (e) { setError(e.message); });
       }, []);
 
       React.useEffect(function () { load(); }, [load]);
 
-      if (error !== null) {
-        return h('div', { className: 'tw' },
-          h('h2', null, '工具守卫'),
-          h('div', { className: 'tw-note tw-err' }, '无法读取状态：' + error),
-          h('div', { className: 'tw-row' }, h('button', { onClick: load }, '重试')),
-        );
-      }
       if (data === null) {
-        return h('div', { className: 'tw' }, h('h2', null, '工具守卫'), h('div', { className: 'tw-empty' }, '读取中…'));
+        return h('div', { className: 'tw' },
+          h('div', { className: 'tw-head' }, h('h2', { className: 'tw-title' }, '工具守卫')),
+          error === null
+            ? h('p', { className: 'tw-empty' }, '读取中…')
+            : h('div', null,
+              h('p', { className: 'tw-note', 'data-tone': 'bad' }, '无法读取状态：' + error),
+              h('div', { className: 'tw-actions' }, h('button', { className: 'tw-btn', onClick: load }, '重试')),
+            ),
+        );
       }
 
       const tools = data.rules.tools || {};
-      const totalChars = data.groups.reduce(function (n, g) {
-        return n + g.roles.reduce(function (m, r) { return m + r.chars; }, 0);
-      }, 0);
-      const hiddenCount = Object.keys(tools).filter(function (k) { return tools[k] === 'drop'; }).length;
+      const allRoles = data.groups.reduce(function (a, g) { return a.concat(g.roles); }, []);
+      const chars = allRoles.reduce(function (n, r) { return n + r.chars; }, 0);
+      const hiddenCount = allRoles.filter(function (r) { return tools[r.name] === 'drop'; }).length;
+      const savedChars = allRoles.filter(function (r) { return tools[r.name] === 'drop'; })
+        .reduce(function (n, r) { return n + r.chars; }, 0);
 
       function persist(nextTools) {
         setBusy(true);
         setError(null);
         call({ op: 'set', tools: nextTools }).then(function () {
-          setDirty(true);
+          setPending(true);
           return call({ op: 'state' });
-        }).then(function (payload) {
-          setData(payload);
-        }).catch(function (e) { setError(e.message); })
+        }).then(function (payload) { setData(payload); })
+          .catch(function (e) { setError(e.message); })
           .then(function () { setBusy(false); });
       }
 
@@ -170,64 +240,89 @@ window.__ModuleLoader__.load({
 
       function onReset() {
         setBusy(true);
-        call({ op: 'reset' }).then(function () { setDirty(true); return call({ op: 'state' }); })
-          .then(function (payload) { setData(payload); })
+        setError(null);
+        call({ op: 'reset' }).then(function () {
+          setPending(true);
+          return call({ op: 'state' });
+        }).then(function (payload) { setData(payload); })
           .catch(function (e) { setError(e.message); })
           .then(function () { setBusy(false); });
       }
 
       return h('div', { className: 'tw' },
-        h('h2', null, '工具守卫'),
-        h('p', { className: 'tw-sub' },
-          '决定哪些工具进入模型的上下文。出厂状态不管理任何工具——全部原样。'),
-
-        h('div', { className: 'tw-stat' },
-          h('div', null, h('b', null, String(data.groups.reduce(function (n, g) { return n + g.roles.length; }, 0))), h('span', null, '个工具')),
-          h('div', null, h('b', null, '≈' + formatNumber(estimateTokens(totalChars))), h('span', null, 'tokens/轮（估算）')),
-          h('div', null, h('b', null, String(hiddenCount)), h('span', null, '个已隐藏')),
+        // ── 页头：标题 + 右上现状 ──
+        h('div', { className: 'tw-head' },
+          h('div', { style: { minWidth: 0 } },
+            h('h2', { className: 'tw-title' }, '工具守卫'),
+            h('p', { className: 'tw-intro' },
+              '决定哪些工具进入模型的上下文。关掉当前用不到的工具，让每轮请求少带一些 schema。'),
+          ),
+          h('span', {
+            className: 'tw-pill',
+            'data-tone': data.patched === false ? 'bad' : (hiddenCount > 0 ? 'ok' : undefined),
+          }, data.patched === false ? '未生效' : (hiddenCount > 0 ? '已启用' : '出厂状态')),
         ),
 
+        // ── 概览 ──
+        h('div', { className: 'tw-stats' },
+          h('div', { className: 'tw-stat' },
+            h('span', { className: 'tw-stat-num' }, String(allRoles.length)),
+            h('span', { className: 'tw-stat-label' }, '个工具')),
+          h('div', { className: 'tw-stat' },
+            h('span', { className: 'tw-stat-num' }, '≈' + num(estimateTokens(chars))),
+            h('span', { className: 'tw-stat-label' }, 'tokens / 轮（估算）')),
+          h('div', { className: 'tw-stat' },
+            h('span', { className: 'tw-stat-num' }, String(hiddenCount)),
+            h('span', { className: 'tw-stat-label' }, '个已隐藏')),
+          h('div', { className: 'tw-stat' },
+            h('span', { className: 'tw-stat-num' }, '≈' + num(estimateTokens(savedChars))),
+            h('span', { className: 'tw-stat-label' }, '节省 / 轮（估算）')),
+        ),
+
+        // ── 状态与诊断 ──
         data.patched === false
-          ? h('div', { className: 'tw-note tw-err' },
+          ? h('p', { className: 'tw-note', 'data-tone': 'bad' },
             '拦截补丁未安装：' + (data.reason || '未知原因') + '。当前配置不会生效。')
           : null,
-
         (data.problems && data.problems.length > 0)
-          ? h('div', { className: 'tw-note tw-err' }, '配置问题：' + data.problems.join('；'))
+          ? h('p', { className: 'tw-note', 'data-tone': 'bad' }, '配置问题：' + data.problems.join('；'))
           : null,
-
         (data.diagnostics && data.diagnostics.length > 0)
-          ? h('div', { className: 'tw-note tw-warn' },
+          ? h('p', { className: 'tw-note', 'data-tone': 'warn' },
             '诊断：' + data.diagnostics.map(function (d) { return d.target + ' ' + d.message; }).join('；'))
           : null,
+        error !== null ? h('p', { className: 'tw-note', 'data-tone': 'bad' }, error) : null,
+        pending
+          ? h('p', { className: 'tw-note', 'data-tone': 'warn' }, '已保存到配置。重启 DSH 后对新注册的工具生效。')
+          : null,
 
-        error !== null ? h('div', { className: 'tw-note tw-err' }, error) : null,
-
-        busy ? h('div', { className: 'tw-note' }, '保存中…') : null,
-        dirty ? h('div', { className: 'tw-note tw-warn' }, '已保存。重启 DSH 后生效。') : null,
-
-        h('div', { style: { marginTop: '12px' } },
-          h('button', { onClick: onReset, disabled: busy }, '恢复出厂（全部放行）'),
-          h('button', {
-            onClick: load, disabled: busy, style: { marginLeft: '8px' },
-          }, '刷新'),
+        // ── 操作 ──
+        h('div', { className: 'tw-actions' },
+          h('button', { className: 'tw-btn', onClick: onReset, disabled: busy, 'data-kind': 'danger' },
+            '恢复出厂'),
+          h('button', { className: 'tw-btn', onClick: load, disabled: busy }, busy ? '处理中…' : '刷新'),
         ),
 
-        data.groups.map(function (g) {
-          return h(GroupBlock, {
-            key: g.group,
-            group: g.group,
-            roles: g.roles,
-            tools: tools,
-            onToggle: onToggle,
-            busy: busy,
-          });
-        }),
+        // ── 工具分组 ──
+        data.groups.length === 0
+          ? h('p', { className: 'tw-empty' }, '还没有捕获到任何工具。重启 DSH 后这里会列出全部工具。')
+          : data.groups.map(function (g) {
+            return h(Group, {
+              key: g.group,
+              group: g.group,
+              roles: g.roles,
+              tools: tools,
+              busy: busy,
+              onToggle: onToggle,
+            });
+          }),
+
+        h('p', { className: 'tw-note' },
+          '出厂状态不隐藏任何工具。受保护的基础工具（read / write / edit / pwsh 等）任何配置都关不掉。'),
       );
     }
 
     function apply(ctx) {
-      // CSS 挂载：Node 测试里没有 document，守卫必要
       if (typeof document !== 'undefined' && ctx && typeof ctx.effect === 'function') {
         ctx.effect(function () {
           if (document.querySelector('style[data-plugin-css=' + JSON.stringify(CSS_TAG) + ']') !== null) {
@@ -256,7 +351,7 @@ window.__ModuleLoader__.load({
 
     exports.apply = apply;
     exports.inject = ['slots'];
-    exports.__testing = { estimateTokens: estimateTokens, formatNumber: formatNumber };
+    exports.__testing = { estimateTokens: estimateTokens, num: num };
     return module.exports;
   },
 });
