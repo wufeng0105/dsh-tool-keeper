@@ -9,6 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   splitMcpName, groupOf, isProtected, normalizeConfig, decide, applyToDefinition, diagnose,
+  rewriteParameterDescriptions, ToolCatalog,
   PROTECTED_TOOLS, MCP_PREFIX,
 } from '../rules.js';
 
@@ -149,11 +150,11 @@ test('decide: 原生工具不受服务器规则影响', () => {
   assert.equal(decide('schedule_list', rules, new Set(['tinyfish'])).action, 'keep');
 });
 
-test('decide: rewrite 命中时返回改写文本', () => {
+test('decide: rewrite 命中时返回改写条目', () => {
   const rules = rulesOf({ rewrite: { 'mcp__tinyfish__fetch_content': '读网页正文。' } });
   const v = decide('mcp__tinyfish__fetch_content', rules, new Set(['tinyfish']));
   assert.equal(v.action, 'rewrite');
-  assert.equal(v.description, '读网页正文。');
+  assert.equal(v.rewrite.description, '读网页正文。');
 });
 
 test('decide: 被 drop 的工具不产生 rewrite', () => {
@@ -187,6 +188,142 @@ test('applyToDefinition: rewrite 只换 description，其余字段保持引用',
   assert.equal(r.definition.parameters, params, 'parameters 必须是同一引用');
   assert.equal(r.definition.output, output, 'output 必须是同一引用');
   assert.equal(def.description, 'orig', '原对象不得被修改');
+});
+
+// ─────────────────────────────────────────────
+// R2.2 参数说明改写
+// ─────────────────────────────────────────────
+const paramFixture = () => ({
+  type: 'object',
+  properties: {
+    urls: { type: 'array', description: 'Array of URLs to fetch' },
+    ttl: { type: 'integer', description: 'Caller freshness tolerance in seconds' },
+  },
+  required: ['urls'],
+});
+
+test('rewriteParameterDescriptions: 替换指定参数的说明', () => {
+  const params = paramFixture();
+  const { parameters, applied, missing } = rewriteParameterDescriptions(params, new Map([['ttl', '缓存秒数']]));
+  assert.deepEqual(applied, ['ttl']);
+  assert.deepEqual(missing, []);
+  assert.equal(parameters.properties.ttl.description, '缓存秒数');
+  assert.equal(parameters.properties.urls.description, 'Array of URLs to fetch', '未指定的参数不得改动');
+  assert.equal(params.properties.ttl.description, 'Caller freshness tolerance in seconds', '原对象不得被修改');
+});
+
+test('rewriteParameterDescriptions: 结构字段一个不动（D2）', () => {
+  const params = paramFixture();
+  const { parameters } = rewriteParameterDescriptions(params, new Map([['urls', 'URL 列表']]));
+  assert.equal(parameters.properties.urls.type, 'array');
+  assert.deepEqual(parameters.required, ['urls'], 'required 必须原样保留');
+  assert.equal(parameters.type, 'object');
+});
+
+test('rewriteParameterDescriptions: 不存在的参数记入 missing，不抛', () => {
+  const params = paramFixture();
+  const { parameters, applied, missing } = rewriteParameterDescriptions(params, new Map([['nope', 'x']]));
+  assert.deepEqual(applied, []);
+  assert.deepEqual(missing, ['nope']);
+  assert.equal(parameters, params, '全未命中时应返回原对象');
+});
+
+test('rewriteParameterDescriptions: 空 overrides 时原样返回', () => {
+  const params = paramFixture();
+  const r = rewriteParameterDescriptions(params, new Map());
+  assert.equal(r.parameters, params);
+});
+
+test('applyToDefinition: 对象形态的 rewrite 同时改工具说明与参数说明', () => {
+  const params = paramFixture();
+  const def = { name: 'mcp__tinyfish__fetch_content', description: 'orig', parameters: params };
+  const rules = rulesOf({
+    rewrite: {
+      'mcp__tinyfish__fetch_content': {
+        description: '读网页正文。',
+        properties: { ttl: '缓存秒数' },
+      },
+    },
+  });
+  const r = applyToDefinition(def, rules, new Set(['tinyfish']));
+  assert.equal(r.definition.description, '读网页正文。');
+  assert.equal(r.definition.parameters.properties.ttl.description, '缓存秒数');
+  assert.equal(r.definition.parameters.properties.urls.description, 'Array of URLs to fetch');
+  assert.equal(r.definition.parameters.required[0], 'urls');
+});
+
+test('applyToDefinition: 对象形态只给 properties 时不改工具说明', () => {
+  const def = { name: 'mcp__tinyfish__fetch_content', description: 'orig', parameters: paramFixture() };
+  const rules = rulesOf({ rewrite: { 'mcp__tinyfish__fetch_content': { properties: { ttl: '缓存秒数' } } } });
+  const r = applyToDefinition(def, rules, new Set(['tinyfish']));
+  assert.equal(r.definition.description, 'orig', '未指定 description 时不得改动');
+});
+
+test('applyToDefinition: 参数不存在时进入 missingParams', () => {
+  const def = { name: 'mcp__tinyfish__fetch_content', description: 'orig', parameters: paramFixture() };
+  const rules = rulesOf({ rewrite: { 'mcp__tinyfish__fetch_content': { properties: { ghost: 'x' } } } });
+  const r = applyToDefinition(def, rules, new Set(['tinyfish']));
+  assert.deepEqual(r.missingParams, ['ghost']);
+});
+
+test('normalizeConfig: 字符串与对象两种 rewrite 形态共存', () => {
+  const { rules, problems } = normalizeConfig({
+    rewrite: {
+      'mcp__a__b': '简单说明',
+      'mcp__a__c': { description: '复杂说明', properties: { p: '参数说明' } },
+    },
+  });
+  assert.equal(problems.length, 0);
+  // 两种形态统一归一化为对象，调用方不需分支
+  assert.equal(rules.rewrites.get('mcp__a__b').description, '简单说明');
+  assert.equal(rules.rewrites.get('mcp__a__b').properties.size, 0);
+  assert.equal(rules.rewrites.get('mcp__a__c').description, '复杂说明');
+  assert.equal(rules.rewrites.get('mcp__a__c').properties.get('p'), '参数说明');
+});
+
+test('normalizeConfig: 空的 rewrite 对象被拒绝并记问题', () => {
+  const { rules, problems } = normalizeConfig({ rewrite: { 'mcp__a__b': {} } });
+  assert.equal(rules.rewrites.has('mcp__a__b'), false);
+  assert.ok(problems.some(p => /neither description nor properties/.test(p)));
+});
+
+// ─────────────────────────────────────────────
+// ToolCatalog（原始文本留存）
+// ─────────────────────────────────────────────
+test('ToolCatalog: 记录原始 description 与体积，供还原与界面使用', () => {
+  const cat = new ToolCatalog();
+  cat.record({ name: 'mcp__tinyfish__fetch_content', description: '很长的说明', parameters: { a: 1 } });
+  const e = cat.get('mcp__tinyfish__fetch_content');
+  assert.equal(e.description, '很长的说明');
+  assert.equal(e.server, 'tinyfish');
+  assert.equal(e.leaf, 'fetch_content');
+  assert.equal(e.group, 'mcp:tinyfish');
+  assert.ok(e.originalChars > 0);
+});
+
+test('ToolCatalog: 已记录的条目不被后来者覆盖（保证原文）', () => {
+  const cat = new ToolCatalog();
+  cat.record({ name: 'x', description: '原始' });
+  cat.record({ name: 'x', description: '改写后' });
+  assert.equal(cat.get('x').description, '原始');
+});
+
+test('ToolCatalog: 按来源分组', () => {
+  const cat = new ToolCatalog();
+  cat.record({ name: 'read', description: 'r' });
+  cat.record({ name: 'mcp__tinyfish__search', description: 's' });
+  cat.record({ name: 'mcp__tinyfish__fetch_content', description: 'f' });
+  const groups = cat.groups();
+  assert.equal(groups.get('core').length, 1);
+  assert.equal(groups.get('mcp:tinyfish').length, 2);
+});
+
+test('ToolCatalog: 标记保护工具', () => {
+  const cat = new ToolCatalog();
+  cat.record({ name: 'read', description: 'r' });
+  cat.record({ name: 'other', description: 'o' });
+  assert.equal(cat.get('read').protected, true);
+  assert.equal(cat.get('other').protected, false);
 });
 
 test('applyToDefinition: 无规则时返回原对象', () => {

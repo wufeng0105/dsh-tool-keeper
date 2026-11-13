@@ -28,7 +28,7 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import {
-  normalizeConfig, applyToDefinition, diagnose, splitMcpName, PROTECTED_TOOLS,
+  normalizeConfig, applyToDefinition, diagnose, splitMcpName, PROTECTED_TOOLS, ToolCatalog,
 } from './rules.js';
 
 export const name = 'dsh-toolwarden';
@@ -148,12 +148,6 @@ export function apply(ctx, config) {
   const settings = config !== null && typeof config === 'object' ? config : {};
   const log = makeLogger(ctx);
 
-  // R4.4 总开关
-  if (settings.enabled === false) {
-    log.info('disabled by config; no tool is filtered');
-    return;
-  }
-
   const path = configPath(settings);
   const { raw, error: readError } = readConfig(path);
   const { rules, problems } = normalizeConfig(raw);
@@ -164,12 +158,29 @@ export function apply(ctx, config) {
   }
   for (const problem of problems) log.warn('config: ' + problem);
 
+  // R4.4 总开关：读 toolwarden.json 的 enabled，不依赖插件 Config（那要改 YAML + 重启）
+  if (rules.enabled === false) {
+    log.info('disabled by toolwarden.json (enabled: false); no tool is filtered');
+    provideStatus(ctx, () => ({
+      patched: false,
+      reason: 'disabled in config',
+      stats: { total: 0, dropped: 0, rewritten: 0, kept: 0 },
+      problems: [...problems, readError].filter(Boolean),
+      diagnostics: [],
+      catalog: [],
+      configPath: path,
+    }));
+    return;
+  }
+
   const knownServers = readKnownServers(settings);
   const seen = new Set();
-  const stats = { total: 0, dropped: 0, rewritten: 0, kept: 0 };
+  const catalog = new ToolCatalog();
+  const stats = { total: 0, dropped: 0, rewritten: 0, kept: 0, paramsRewritten: 0 };
+  const missingParams = new Map(); // toolName -> string[]
 
   /** 装补丁。返回 { patched, restore, reason } */
-  const patch = installPatch(ctx, rules, knownServers, seen, stats, log);
+  const patch = installPatch(ctx, rules, knownServers, seen, stats, catalog, missingParams, log);
 
   if (!patch.patched) {
     log.warn('could not install the registration patch: ' + patch.reason);
@@ -180,6 +191,7 @@ export function apply(ctx, config) {
       stats: { ...stats },
       problems: [...problems, readError].filter(Boolean),
       diagnostics: [],
+      catalog: [],
       configPath: path,
     }));
     return;
@@ -188,21 +200,44 @@ export function apply(ctx, config) {
   // 定期把诊断算出来（首次注册后即可）
   const computeDiagnostics = () => {
     try {
-      return diagnose(rules, [...seen], knownServers ?? new Set());
+      const base = diagnose(rules, [...seen], knownServers ?? new Set());
+      // R2.2 的参数名不存在也要报出来
+      for (const [tool, params] of missingParams) {
+        for (const p of params) {
+          base.push({ kind: 'warning', target: `rewrite.${tool}.properties.${p}`, message: 'parameter not found on this tool' });
+        }
+      }
+      return base;
     } catch (error) {
       log.warn('diagnose failed: ' + String(error?.message ?? error));
       return [];
     }
   };
 
-  provideStatus(ctx, () => ({
+  /** 供界面与模型工具读取的完整快照。 */
+  const snapshot = () => ({
     patched: true,
     reason: undefined,
     stats: { ...stats },
     problems: [...problems, readError].filter(Boolean),
     diagnostics: computeDiagnostics(),
     configPath: path,
-  }));
+    enabled: rules.enabled,
+    groups: [...catalog.groups()].map(([group, entries]) => ({
+      group,
+      entries: entries.map(e => ({
+        name: e.name,
+        server: e.server,
+        leaf: e.leaf,
+        protected: e.protected,
+        originalDescChars: e.originalDescChars,
+        originalChars: e.originalChars,
+        originalDescription: e.description,
+      })),
+    })),
+  });
+
+  provideStatus(ctx, snapshot);
 
   ctx.effect(() => () => {
     patch.restore();
@@ -214,7 +249,7 @@ export function apply(ctx, config) {
 }
 
 /** 装 register 补丁。任何异常都返回 patched:false 而不是抛出。 */
-function installPatch(ctx, rules, knownServers, seen, stats, log) {
+function installPatch(ctx, rules, knownServers, seen, stats, catalog, missingParams, log) {
   let underlying;
   let original;
   let hadOwn;
@@ -237,6 +272,8 @@ function installPatch(ctx, rules, knownServers, seen, stats, log) {
     stats.total += 1;
     let verdict;
     try {
+      // 先留原文（R2.4 / R3.3 / R3.4 的共同前置），必须在改写之前
+      catalog.record(definition);
       const nm = definition === null || definition === undefined ? undefined : definition.name;
       if (typeof nm === 'string' && nm !== '') seen.add(nm);
       verdict = applyToDefinition(definition, rules, knownServers);
@@ -252,6 +289,12 @@ function installPatch(ctx, rules, knownServers, seen, stats, log) {
     }
     if (verdict.definition !== definition) {
       stats.rewritten += 1;
+      if (verdict.missingParams !== undefined) {
+        const nm = definition === null || definition === undefined ? undefined : definition.name;
+        if (typeof nm === 'string') {
+          missingParams.set(nm, verdict.missingParams);
+        }
+      }
     } else {
       stats.kept += 1;
     }
