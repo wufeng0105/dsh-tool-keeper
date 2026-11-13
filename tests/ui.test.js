@@ -189,7 +189,7 @@ test('ui: 行用 grid 三列（图标/内容/开关）', () => {
   const { mod } = loadUi();
   const css = mod.__testing.CSS;
   assert.ok(/\.tw-row\{[^}]*grid-template-columns:34px minmax\(0,1fr\) auto/.test(css));
-  assert.ok(/\.tw-row\{[^}]*min-height:40px/.test(css));
+  assert.ok(/\.tw-row\{[^}]*min-height:44px/.test(css));
 });
 
 // ─────────────────────────────────────────────
@@ -239,12 +239,12 @@ test('ui: 搜索无结果时给提示', () => {
 // ─────────────────────────────────────────────
 test('ui: 未展开时不出现编辑区', () => {
   const html = renderView(makeData());
-  assert.ok(!html.includes('tw-textarea'));
+  assert.ok(!html.includes('tw-editor'));
 });
 
 test('ui: 展开后出现原文 + 改写框 + 保存按钮', () => {
   const html = renderView(makeData(), { expandedName: 'mcp__tinyfish__search' });
-  assert.ok(html.includes('tw-textarea'));
+  assert.ok(html.includes('tw-editor'));
   assert.ok(html.includes('tw-original'));
   assert.ok(html.includes('搜索网页。'), '应显示服务器原文');
   assert.ok(html.includes('服务器原始说明'));
@@ -267,15 +267,54 @@ test('ui: 有未保存修改时提示', () => {
 // ─────────────────────────────────────────────
 // 头部与状态
 // ─────────────────────────────────────────────
-test('ui: 头部卡片含标题、说明、状态胶囊、四个统计', () => {
+test('ui: 标题行只有标题与说明，不挂状态标签和统计块', () => {
   const html = renderView(makeData());
-  assert.ok(html.includes('tw-headerCard'));
+  assert.ok(html.includes('tw-head'));
   assert.ok(html.includes('工具守卫'));
-  assert.ok(html.includes('个工具'));
-  assert.ok(html.includes('tokens / 轮'));
-  assert.ok(html.includes('个已隐藏'));
-  assert.ok(html.includes('节省 / 轮'));
-  assert.ok(html.includes('出厂状态'));
+  assert.ok(html.includes('tw-intro'));
+
+  // 这些是用户明确要求删掉的：顶部标签与底部按钮重复，统计块是无效数字
+  assert.ok(!html.includes('tw-pill'), '不应有状态胶囊');
+  assert.ok(!html.includes('出厂状态'), '不应重复显示出厂状态');
+  assert.ok(!html.includes('tw-headerCard'), '不应有头部卡片');
+  assert.ok(!html.includes('tw-stat'), '不应有统计块');
+});
+
+test('ui: 摘要是一行小字，含总数与 token', () => {
+  const html = renderView(makeData());
+  assert.ok(html.includes('tw-summary'));
+  assert.ok(/共 5 个工具 · ≈[\d,]+ tokens/.test(html));
+});
+
+test('ui: 有隐藏时才在摘要里提节省', () => {
+  const none = renderView(makeData());
+  assert.ok(!none.includes('每轮省'), '没有隐藏时不该提节省');
+
+  const data = makeData();
+  data.rules.tools['mcp__tinyfish__fetch_content'] = 'drop';
+  const some = renderView(data);
+  assert.ok(some.includes('每轮省'), '有隐藏时应提节省');
+  assert.ok(/已隐藏 1 个/.test(some));
+});
+
+test('ui: 分组头部不放批量开关按钮', () => {
+  const html = renderView(makeData());
+  assert.ok(!html.includes('全部隐藏'), '组内不该有「全部隐藏」');
+  assert.ok(!html.includes('全部显示'), '组内不该有「全部显示」');
+});
+
+test('ui: 恢复出厂只在底部出现一次', () => {
+  const html = renderView(makeData());
+  const count = (html.match(/恢复出厂/g) || []).length;
+  assert.equal(count, 1, '「恢复出厂」不应重复出现');
+  assert.ok(html.includes('tw-footer'), '应位于底部区域');
+});
+
+test('ui: 工具栏有搜索、全部折叠、刷新', () => {
+  const html = renderView(makeData());
+  assert.ok(html.includes('tw-search'));
+  assert.ok(html.includes('全部折叠'));
+  assert.ok(html.includes('刷新'));
 });
 
 test('ui: 补丁未装时显示提示且胶囊变红', () => {
@@ -310,12 +349,56 @@ test('ui: CSS 零硬编码色值', () => {
 test('ui: CSS 采用宿主的排版刻度', () => {
   const { mod } = loadUi();
   const css = mod.__testing.CSS;
-  assert.ok(css.includes('max-width:720px'));
+  assert.ok(css.includes('max-width:760px'));
   assert.ok(css.includes('font-size:16px;line-height:24px'), '页面标题 16/24');
   assert.ok(css.includes('font-size:13px;font-weight:600'), '行名 13 w600');
   assert.ok(css.includes('font-size:11px;line-height:13px'), '副标题 11/13');
   assert.ok(css.includes('border-radius:12px'), '分组卡片圆角 12');
-  assert.ok(css.includes('border-radius:var(--dsw-radius-lg,16px)'), '头部卡片圆角 16');
+  assert.ok(css.includes('min-height:44px'), '行高 44');
+});
+
+test('ui: 有错开浮现动效与 reduced-motion 降级', () => {
+  const { mod } = loadUi();
+  const css = mod.__testing.CSS;
+  assert.ok(css.includes('@keyframes tw-rise'), '分组应有浮现动效');
+  assert.ok(/nth-child\(2\)\{animation-delay/.test(css), '分组应错开延迟');
+  assert.ok(css.includes('prefers-reduced-motion'), '必须尊重减弱动效偏好');
+});
+
+// ─────────────────────────────────────────────
+// 编辑区：两框等高同宽（用户明确要求）
+// ─────────────────────────────────────────────
+test('ui: 编辑区是左右两栏等高布局', () => {
+  const { mod } = loadUi();
+  const css = mod.__testing.CSS;
+  // 两栏是 grid 1fr 1fr
+  assert.ok(/\.tw-fields\{[^}]*grid-template-columns:1fr 1fr/.test(css),
+    '原文与改写应左右两栏等宽');
+});
+
+test('ui: 原文框与编辑框共用同一套盒子样式（等高同边框）', () => {
+  const { mod } = loadUi();
+  const css = mod.__testing.CSS;
+  // .tw-box 定义了固定高度 + 边框 + 内边距，两个框都套用
+  const boxRule = css.match(/\.tw-box\{([^}]*)\}/);
+  assert.ok(boxRule !== null, '必须存在 .tw-box 公共盒子');
+  assert.ok(/height:132px/.test(boxRule[1]), '盒子要固定高度');
+  assert.ok(/border:1px solid/.test(boxRule[1]), '盒子要有边框');
+  assert.ok(/padding:8px 10px/.test(boxRule[1]), '盒子内边距一致');
+});
+
+test('ui: 原文包在框里且只读，改写是可编辑的 textarea', () => {
+  const html = renderView(makeData(), { expandedName: 'mcp__tinyfish__search' });
+  // 原文是 div 且同时有 tw-box 与 tw-original 两个类
+  assert.ok(/class="tw-box tw-original"/.test(html), '原文应同时套用 tw-box 与 tw-original');
+  // 改写是 textarea 且同时有 tw-box 与 tw-editor
+  assert.ok(/<textarea[^>]*class="tw-box tw-editor"/.test(html), '改写应是 textarea 且套用 tw-box');
+});
+
+test('ui: 窄屏下两栏改为一栏', () => {
+  const { mod } = loadUi();
+  const css = mod.__testing.CSS;
+  assert.ok(/@media \(max-width:640px\)\{\.tw-fields\{grid-template-columns:1fr\}\}/.test(css));
 });
 
 test('ui: 有焦点环与动效降级', () => {
