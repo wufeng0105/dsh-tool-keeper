@@ -80,8 +80,8 @@ async function callHandler(handler, method, body, headers) {
 }
 
 function setup() {
-  const dir = mkdtempSync(join(tmpdir(), 'toolwarden-api-'));
-  const configPath = join(dir, 'toolwarden.json');
+  const dir = mkdtempSync(join(tmpdir(), 'tool-keeper-api-'));
+  const configPath = join(dir, 'tool-keeper.json');
   const { ctx, captured } = makeCtx();
   const dispose = mountApi(ctx, makeDeps(configPath));
   return { dir, configPath, ctx, captured, dispose };
@@ -94,7 +94,7 @@ test('api: 注册的路由路径正确，kind=exact', () => {
   const { captured, dir, dispose } = setup();
   assert.equal(captured.route.kind, 'exact');
   assert.equal(captured.route.path, ROUTE_PATH);
-  assert.equal(ROUTE_PATH, '/toolwarden/api');
+  assert.equal(ROUTE_PATH, '/tool-keeper/api');
   dispose();
   assert.equal(captured.disposed, 1);
   rmSync(dir, { recursive: true, force: true });
@@ -110,7 +110,7 @@ test('api: 用运行期注入拿 webServer，不写进 inject', () => {
 test('api: 没有 webServer 时不抛，只记日志', () => {
   const warnings = [];
   const ctx = { inject: (names, cb) => cb({}) }; // 空服务
-  const dir = mkdtempSync(join(tmpdir(), 'toolwarden-api-'));
+  const dir = mkdtempSync(join(tmpdir(), 'tool-keeper-api-'));
   const dispose = mountApi(ctx, {
     configPath: join(dir, 'x.json'),
     catalog: new ToolCatalog(),
@@ -297,8 +297,8 @@ test('api: 配置未改动时 stale=false', async () => {
 
 test('api: 磁盘配置与启动指纹不同时报 stale=true', async () => {
   const captured = { route: undefined };
-  const dir = mkdtempSync(join(tmpdir(), 'toolwarden-stale-'));
-  const configPath = join(dir, 'toolwarden.json');
+  const dir = mkdtempSync(join(tmpdir(), 'tool-keeper-stale-'));
+  const configPath = join(dir, 'tool-keeper.json');
   writeFileSync(configPath, JSON.stringify({ enabled: true, servers: {}, tools: {}, rewrite: {} }));
 
   // 模拟「启动时」的指纹：把它设成与当前磁盘内容不同
@@ -331,8 +331,8 @@ test('api: 磁盘配置与启动指纹不同时报 stale=true', async () => {
 
 test('api: 没有启动指纹时 stale=false（不瞎报）', async () => {
   const captured = { route: undefined };
-  const dir = mkdtempSync(join(tmpdir(), 'toolwarden-stale2-'));
-  const configPath = join(dir, 'toolwarden.json');
+  const dir = mkdtempSync(join(tmpdir(), 'tool-keeper-stale2-'));
+  const configPath = join(dir, 'tool-keeper.json');
   writeFileSync(configPath, JSON.stringify({ enabled: true }));
 
   const ctx = {

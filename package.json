@@ -1,5 +1,5 @@
 {
-  "name": "@local/dsh-toolwarden",
+  "name": "@local/dsh-tool-keeper",
   "version": "0.3.3",
   "private": true,
   "type": "module",
@@ -7,11 +7,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/wufeng0105/dsh-toolwarden.git"
+    "url": "git+https://github.com/wufeng0105/dsh-tool-keeper.git"
   },
-  "homepage": "https://github.com/wufeng0105/dsh-toolwarden#readme",
+  "homepage": "https://github.com/wufeng0105/dsh-tool-keeper#readme",
   "bugs": {
-    "url": "https://github.com/wufeng0105/dsh-toolwarden/issues"
+    "url": "https://github.com/wufeng0105/dsh-tool-keeper/issues"
   },
   "keywords": [
     "dsh",

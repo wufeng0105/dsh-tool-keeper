@@ -16,7 +16,7 @@ import { normalizeConfig, ToolCatalog } from '../rules.js';
 
 /** 建一个临时目录当 DSH_HOME。 */
 function makeTmp() {
-  return mkdtempSync(join(tmpdir(), 'toolwarden-test-'));
+  return mkdtempSync(join(tmpdir(), 'tool-keeper-test-'));
 }
 
 /** 造一个假 ctx：捕获 register 进来的定义。 */
@@ -50,7 +50,7 @@ function makeDeps(configPath) {
 
 function setup() {
   const dir = makeTmp();
-  const configPath = join(dir, 'toolwarden.json');
+  const configPath = join(dir, 'tool-keeper.json');
   const { ctx, captured } = makeCtx();
   const deps = makeDeps(configPath);
   const dispose = registerTool(ctx, { configPath, ...deps });
@@ -64,9 +64,9 @@ function readConfig(configPath) {
 // ─────────────────────────────────────────────
 // 工具定义形状
 // ─────────────────────────────────────────────
-test('tool: 注册名是 toolwarden（保护名单已预留）', () => {
+test('tool: 注册名是 tool-keeper（保护名单已预留）', () => {
   const { definition, dir } = setup();
-  assert.equal(definition.name, 'toolwarden');
+  assert.equal(definition.name, 'tool_keeper');
   rmSync(dir, { recursive: true, force: true });
 });
 

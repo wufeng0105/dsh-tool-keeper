@@ -1,17 +1,17 @@
-# Toolwarden bundle patch。
+# Tool Keeper bundle patch。
 #
 # 三行：
-#   dsh-toolwarden       —— 宿主半：拦截 tools.register，决定丢弃/改写/放行
-#   dsh-toolwarden-ui    —— 设置页的宿主空壳，只为让 Loader 有一行可指
+#   dsh-tool-keeper       —— 宿主半：拦截 tools.register，决定丢弃/改写/放行
+#   dsh-tool-keeper-ui    —— 设置页的宿主空壳，只为让 Loader 有一行可指
 #
-# `dsh-toolwarden-ui` 用 `./ui/index.js` 这类相对路径：bundle patch 的 entry name
+# `dsh-tool-keeper-ui` 用 `./ui/index.js` 这类相对路径：bundle patch 的 entry name
 # 相对**本包目录**解析。浏览器半的发现只认「包的精确包名」或「路径里的最近
 # package.json」——`ui/package.json` 提供了后者。裸子路径会被当成非包跳过。
 #
 # ⚠️ 两行的 name 前缀必须与 package.json 的 `name` 逐字一致，否则装完解析不到。
 - insert:
-    - id: dsh-toolwarden
-      name: '@local/dsh-toolwarden'
+    - id: dsh-tool-keeper
+      name: '@local/dsh-tool-keeper'
       config: {}
-    - id: dsh-toolwarden-ui
+    - id: dsh-tool-keeper-ui
       name: './ui/index.js'

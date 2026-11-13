@@ -8,7 +8,7 @@
 ## 验证环境
 
 - DSH `0.2.2-rc.2`，desktop profile
-- 装着 15 个 bundle：dshmarket、dsh-enhance、teammate-model-picker、draft-studio、xdpool、archive-manager、plugin-kit、toolwarden 等
+- 装着 15 个 bundle：dshmarket、dsh-enhance、teammate-model-picker、draft-studio、xdpool、archive-manager、plugin-kit、tool-keeper 等
 - 4 个 MCP 服务器：context7、exa、tinyfish、lexiang
 
 **这是真实环境，不是最小 profile。** 满足 WORKING-AGREEMENT 对 P4 的要求。
@@ -68,7 +68,7 @@ tinyfish 仅剩：`mcp__tinyfish__search`、`mcp__tinyfish__fetch_content`
 1. 工具名集合 == 基线 − 隐藏集合 ✅
 2. 改写文本存活 ✅
 
-这是 `tool-mask` 栽的地方（一次性计算 + MCP 异步注册错配），Toolwarden 用注册入口拦截规避了。
+这是 `tool-mask` 栽的地方（一次性计算 + MCP 异步注册错配），Tool Keeper 用注册入口拦截规避了。
 
 ---
 

@@ -1,8 +1,8 @@
 /**
- * Toolwarden 设置页 —— 浏览器半。
+ * Tool Keeper 设置页 —— 浏览器半。
  *
  * 装载：window.__ModuleLoader__.load({ id, factory })
- * 数据：/toolwarden/api 的 op = state / set / reset
+ * 数据：/tool-keeper/api 的 op = state / set / reset
  *
  * ## 每个元素都得挣得自己的位置
  *
@@ -28,15 +28,15 @@
  * 零硬编码色值，全部走 --dsw-alias-*。
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-toolwarden-ui',
+  id: 'dsh-tool-keeper-ui',
   factory: (require) => {
     var module = { exports: {} };
     var exports = module.exports;
     var React = require('react');
     var h = React.createElement;
 
-    var ENDPOINT = '/toolwarden/api';
-    var CSS_TAG = 'dsh-toolwarden-ui/settings.css';
+    var ENDPOINT = '/tool-keeper/api';
+    var CSS_TAG = 'dsh-tool-keeper-ui/settings.css';
 
     var CSS = [
       '.tw{display:flex;flex-direction:column;width:100%;max-width:760px;padding:0 0 24px;box-sizing:border-box;font-family:var(--dsw-font-family);color:var(--dsw-alias-label-primary)}',
@@ -375,7 +375,7 @@ window.__ModuleLoader__.load({
     }
 
     /** 纯展示组件：给 data 就出 HTML。 */
-    function ToolwardenView(props) {
+    function ToolKeeperView(props) {
       var data = props.data;
       var rewrites = data.rules.rewrites || {};
       var query = (props.query || '').trim().toLowerCase();
@@ -422,7 +422,7 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'tw' },
         /* 标题行：只有标题与说明 */
         h('div', { className: 'tw-head' },
-          h('h2', { className: 'tw-title' }, '工具守卫'),
+          h('h2', { className: 'tw-title' }, 'Tool Keeper'),
           h('p', { className: 'tw-intro' },
             '决定哪些工具进入模型的上下文。关掉用不到的，让每轮请求少带一份工具定义。'),
         ),
@@ -544,7 +544,7 @@ window.__ModuleLoader__.load({
       if (data === null) {
         return h('div', { className: 'tw' },
           h('div', { className: 'tw-head' },
-            h('h2', { className: 'tw-title' }, '工具守卫'),
+            h('h2', { className: 'tw-title' }, 'Tool Keeper'),
             h('p', { className: 'tw-intro' }, '决定哪些工具进入模型的上下文。')),
           error === null
             ? h('p', { className: 'tw-status' }, '读取中…')
@@ -619,7 +619,7 @@ window.__ModuleLoader__.load({
         setCollapsed(next);
       }
 
-      return h(ToolwardenView, {
+      return h(ToolKeeperView, {
         data: data,
         busy: busy,
         error: error,
@@ -646,7 +646,7 @@ window.__ModuleLoader__.load({
             return function () {};
           }
           var tag = document.createElement('style');
-          tag.dataset.plugin = 'dsh-toolwarden-ui';
+          tag.dataset.plugin = 'dsh-tool-keeper-ui';
           tag.dataset.pluginCss = CSS_TAG;
           tag.textContent = CSS;
           document.head.appendChild(tag);
@@ -658,11 +658,11 @@ window.__ModuleLoader__.load({
       ctx.slots.inject('settings.section', function () {
         return ctx.slots.register({
           name: 'settings.section',
-          id: 'toolwarden',
+          id: 'tool-keeper',
           // 50：排在「归档会话」(45) 之后、草稿工作室(60) 之前。
           // 不能用 60——那和 dsh-draft-studio 撞号，导航里的相对顺序会不稳定。
           order: 50,
-          label: function () { return '工具守卫'; },
+          label: function () { return 'Tool Keeper'; },
           inject: function () { return {}; },
         }, Section);
       });
@@ -674,7 +674,7 @@ window.__ModuleLoader__.load({
       estimateTokens: estimateTokens,
       num: num,
       nextToolsAfterToggle: nextToolsAfterToggle,
-      View: ToolwardenView,
+      View: ToolKeeperView,
       Section: Section,
       CSS: CSS,
     };

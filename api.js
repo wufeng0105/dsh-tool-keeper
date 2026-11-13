@@ -1,5 +1,5 @@
 /**
- * dsh-toolwarden —— 设置页 API 路由（宿主半）。
+ * dsh-tool-keeper —— 设置页 API 路由（宿主半）。
  *
  * ## 为什么单独一个文件
  *
@@ -21,7 +21,7 @@
  * 客户端侧：
  *   fetch(ENDPOINT, { method: 'POST', headers, body: JSON.stringify({ op, ... }) })
  *
- * @module dsh-toolwarden/api
+ * @module dsh-tool-keeper/api
  */
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
@@ -30,7 +30,7 @@ import { normalizeConfig, diagnose, decide } from './rules.js';
 import { createBaselineConfig } from './baseline.js';
 import { hashText } from './hash.js';
 
-export const ROUTE_PATH = '/toolwarden/api';
+export const ROUTE_PATH = '/tool-keeper/api';
 
 /** 只接受同源请求，防止别的页面通过浏览器改配置。 */
 function sameOrigin(req) {

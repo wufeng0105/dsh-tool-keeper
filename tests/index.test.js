@@ -77,8 +77,8 @@ function makeCtx(overrides = {}) {
 }
 
 function makeDir(config) {
-  const dir = mkdtempSync(join(tmpdir(), 'toolwarden-index-'));
-  const configPath = join(dir, 'toolwarden.json');
+  const dir = mkdtempSync(join(tmpdir(), 'tool-keeper-index-'));
+  const configPath = join(dir, 'tool-keeper.json');
   if (config !== undefined) {
     writeFileSync(configPath, typeof config === 'string' ? config : JSON.stringify(config, null, 2));
   }
@@ -86,8 +86,8 @@ function makeDir(config) {
 }
 
 function readStatus(state) {
-  const entry = state.provided.toolwarden;
-  assert.ok(entry !== undefined, '必须 provide toolwarden 状态');
+  const entry = state.provided.tool_keeper;
+  assert.ok(entry !== undefined, '必须 provide tool-keeper 状态');
   return typeof entry.status === 'function' ? entry.status() : entry.status;
 }
 
@@ -98,7 +98,7 @@ test('index: apply 不抛，且 provide 出状态', () => {
   const { dir, configPath } = makeDir({ enabled: true, servers: {}, tools: {}, rewrite: {} });
   const { ctx, state } = makeCtx();
   assert.doesNotThrow(() => apply(ctx, { configPath }));
-  assert.ok(state.provided.toolwarden !== undefined);
+  assert.ok(state.provided.tool_keeper !== undefined);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -174,12 +174,12 @@ test('index: enabled=false 时不装补丁，但模型工具与设置页 API 仍
   // 不装补丁：register 保持原样
   assert.equal(tools.register, original, '禁用时不应包装 register');
 
-  // 但恢复入口必须在：toolwarden 工具
-  assert.ok(state.registered.some(d => d.name === 'toolwarden'),
-    '禁用后仍必须注册 toolwarden 工具，否则用户没有恢复入口');
+  // 但恢复入口必须在：tool-keeper 工具
+  assert.ok(state.registered.some(d => d.name === 'tool_keeper'),
+    '禁用后仍必须注册 tool-keeper 工具，否则用户没有恢复入口');
 
   // 设置页 API 也必须在
-  assert.ok(state.route !== undefined, '禁用后仍必须挂载 /toolwarden/api');
+  assert.ok(state.route !== undefined, '禁用后仍必须挂载 /tool-keeper/api');
 
   const status = readStatus(state);
   assert.equal(status.patched, false);
@@ -262,7 +262,7 @@ test('index: 配置损坏时按全放行跑，并报出来', () => {
 
   ctx.tools.register({ name: 'anything', description: 'd', parameters: {} });
   assert.ok(state.registered.some(d => d.name === 'anything'), '坏配置时全部放行');
-  assert.ok(state.warnings.some(w => /toolwarden/.test(w)), '必须告警');
+  assert.ok(state.warnings.some(w => /tool-keeper/.test(w)), '必须告警');
   rmSync(dir, { recursive: true, force: true });
 });
 

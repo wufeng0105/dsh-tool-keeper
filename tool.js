@@ -1,21 +1,21 @@
 /**
- * dsh-toolwarden —— 模型可调用的管理工具。
+ * dsh-tool-keeper —— 模型可调用的管理工具。
  *
  * ## 为什么需要它（审计结论）
  *
  * 用户要的是「非 JSON 的入口」。设置页是终态，但它的数据层就是这组动作。
  * 先做工具，用户立刻能用自然语言管理；后面做界面时，界面读写的是同一份
- * `toolwarden.json`、复用同一个 `rules.js`，工具就是界面的后端。
+ * `tool-keeper.json`、复用同一个 `rules.js`，工具就是界面的后端。
  *
- * `PROTECTED_TOOLS` 里早已预留 `'toolwarden'` 这个名字。
+ * `PROTECTED_TOOLS` 里早已预留 `'tool_keeper'` 这个名字。
  *
  * ## 它的定位
  *
  * 不是给用户手敲 command，而是让模型在对话里替用户改配置：
  *   用户：「把 exa 也关掉，只留网页搜索」
- *   模型：调 toolwarden { action: "server", server: "exa", keep: ["web_search_exa"] }
+ *   模型：调 tool-keeper { action: "server", server: "exa", keep: ["web_search_exa"] }
  *
- * @module dsh-toolwarden/tool
+ * @module dsh-tool-keeper/tool
  */
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
@@ -23,7 +23,7 @@ import { dirname } from 'node:path';
 import { normalizeConfig, diagnose, splitMcpName, PROTECTED_TOOLS } from './rules.js';
 import { createBaselineConfig } from './baseline.js';
 
-const TOOL_NAME = 'toolwarden';
+const TOOL_NAME = 'tool_keeper';
 
 /**
  * 读配置；文件不存在时返回 baseline。
@@ -94,7 +94,7 @@ export function registerTool(ctx, options) {
       'action=rewrite 改写工具或参数说明（省略 text=清除该工具的改写）；',
       'action=enable 总开关（value=true/false）；',
       'action=reset 恢复出厂基线。',
-      '改动写入 toolwarden.json，需重启 DSH 才对已注册的工具生效。',
+      '改动写入 tool-keeper.json，需重启 DSH 才对已注册的工具生效。',
     ].join(''),
     parameters: {
       type: 'object',
@@ -277,7 +277,7 @@ export function registerTool(ctx, options) {
   try {
     return ctx.tools.register(definition);
   } catch (error) {
-    log.warn('could not register the toolwarden tool: ' + String(error?.message ?? error));
+    log.warn('could not register the tool-keeper tool: ' + String(error?.message ?? error));
     return () => {};
   }
 }

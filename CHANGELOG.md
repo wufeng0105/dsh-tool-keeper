@@ -16,7 +16,7 @@ action=status 的实测输出
   toolCount   : 105     ← 同一份输出里两个数字互相矛盾
 ```
 
-`stats.total` 数的是 `register()` 的调用次数（含重复注册、含插件自己的 `toolwarden` 工具），
+`stats.total` 数的是 `register()` 的调用次数（含重复注册、含插件自己的 `tool-keeper` 工具），
 不是实际工具数。`paramsRewritten` 初始化后从未自增，恒为 0。
 
 而且**没有任何消费者**：设置页的统计全部由目录（catalog）自行计算，
@@ -29,9 +29,9 @@ action=status 的实测输出
 ### 界面与模型是两条独立入口
 
 - 设置页：给人用，点开关、展开改说明
-- `toolwarden` 工具：给模型用，`status` / `list` / `server` / `tool` / `rewrite` / `enable` / `reset`
+- `tool-keeper` 工具：给模型用，`status` / `list` / `server` / `tool` / `rewrite` / `enable` / `reset`
 
-两者写同一份 `~/.dsh/toolwarden.json`，走同一套 `rules.js` 判定。
+两者写同一份 `~/.dsh/tool-keeper.json`，走同一套 `rules.js` 判定。
 模型侧改动同样要重启才生效，设置页会显示「尚未生效」。
 
 ## 0.3.2 — 2026-11-13
@@ -90,7 +90,7 @@ action=status 的实测输出
 - **「受保护」的解释补回**。上一版重构时删掉了，某些行没开关且无任何说明。
 - **刷新按钮**不再因别的操作显示「处理中…」。
 - **「重启后对新注册的工具生效」**改为「重启后生效」（原句自相矛盾）。
-- 孤立术语 `schema` → 工具定义；加载态与加载后文案统一；类名 `tw-itemT` → `tw-item`；
+- 孤立术语 `schema` → 工具定义；加载态与加载后文案统一；类名 `tk-itemT` → `tk-item`；
   View 不再往传入的 props 对象上挂字段。
 
 ### 测试
@@ -105,7 +105,7 @@ action=status 的实测输出
 设置页。浏览器半 `ui/` + 宿主路由 `api.js`。
 
 - `settings.section` 注册，导航位置 `order: 50`（避开 `dsh-draft-studio` 占用的 60）
-- `/toolwarden/api`：`state` / `set` / `reset`，同源校验，写前校验配置，`reset` 留备份
+- `/tool-keeper/api`：`state` / `set` / `reset`，同源校验，写前校验配置，`reset` 留备份
 - `webServer` 走 `ctx.inject(['webServer'], cb)` 运行期注入——写进 `inject` 会让
   headless 下的插件永远 pending，宿主当 web boot 失败
 
@@ -114,7 +114,7 @@ action=status 的实测输出
 
 ## 0.2.0 — 2026-11-13
 
-- 新增模型可调用的 `toolwarden` 工具（`status` / `list` / `server` / `tool` / `rewrite` /
+- 新增模型可调用的 `tool-keeper` 工具（`status` / `list` / `server` / `tool` / `rewrite` /
   `enable` / `reset`），不用手改 JSON
 - **出厂基线改为全空**。之前两版都犯了同一个错：第一版关掉 6 个「低频」内置工具
   （那是砍功能），第二版预设了 tinyfish 白名单（仍然是替用户做决定）。
@@ -128,6 +128,6 @@ action=status 的实测输出
 - `rules.js` 纯函数核心，无宿主依赖：`normalizeConfig` / `decide` /
   `rewriteParameterDescriptions` / `applyToDefinition` / `ToolCatalog` / `diagnose`
 - 保护名单：`read` `write` `edit` `glob` `grep` `pwsh` `present` `todo_write`
-  `ask_user_question` `toolwarden` `skill`
+  `ask_user_question` `tool-keeper` `skill`
 - 参数说明改写（R2.2）：只替换 `properties.<p>.description`，结构字段一个不动
 - 全链路 fail-open：配置坏、插件出错、补丁装不上，都不阻断注册

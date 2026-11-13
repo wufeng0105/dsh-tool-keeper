@@ -1,5 +1,5 @@
 /**
- * dsh-toolwarden —— Host 半。
+ * dsh-tool-keeper —— Host 半。
  *
  * 职责：在工具注册入口拦截，按规则决定「丢弃 / 改写 / 放行」。
  *
@@ -21,7 +21,7 @@
  *    `tool-mask` 就是静默失效的典型。
  * 3. **冷启动即生效**（R4.1）。补丁装在 `apply` 期间，早于任何 MCP 连接。
  *
- * @module @local/dsh-toolwarden
+ * @module @local/dsh-tool-keeper
  */
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
@@ -35,7 +35,7 @@ import { createBaselineConfig } from './baseline.js';
 import { mountApi } from './api.js';
 import { hashText } from './hash.js';
 
-export const name = 'dsh-toolwarden';
+export const name = 'dsh-tool-keeper';
 
 /** `tools` 是硬依赖：没有它就无法拦截。`agents` 用不到，不加。 */
 export const inject = ['tools'];
@@ -50,7 +50,7 @@ const ORIGINAL = Symbol.for('cordis.original');
 function configPath(config) {
   if (typeof config?.configPath === 'string' && config.configPath !== '') return config.configPath;
   const home = process.env.DSH_HOME || join(homedir(), '.dsh');
-  return join(home, 'toolwarden.json');
+  return join(home, 'tool-keeper.json');
 }
 
 /** 读配置。任何失败都退化为空配置（全放行），并返回原因。 */
@@ -177,12 +177,12 @@ export function apply(ctx, config) {
 
   const disabled = rules.enabled === false;
   if (disabled) {
-    // R4.4 总开关：读 toolwarden.json 的 enabled，不依赖插件 Config（那要改 YAML + 重启）
+    // R4.4 总开关：读 tool-keeper.json 的 enabled，不依赖插件 Config（那要改 YAML + 重启）
     //
     // 注意：禁用时**仍然**注册模型工具与设置页 API。它们是唯一的恢复入口——
     // 早先的写法在这里直接 return，于是关掉总开关之后重启，工具和 API 一起消失，
     // 用户只能手改 JSON 才能改回来。逃生门不能只有门没有把手。
-    log.info('disabled by toolwarden.json (enabled: false); no tool is filtered');
+    log.info('disabled by tool-keeper.json (enabled: false); no tool is filtered');
   }
 
   const knownServers = disabled ? undefined : readKnownServers(settings);
@@ -269,7 +269,7 @@ export function apply(ctx, config) {
     } catch {
       // 路由可能已随作用域销毁
     }
-  }, 'toolwarden: restore register, tool and api');
+  }, 'tool-keeper: restore register, tool and api');
 
   log.info(
     `patched; config=${path}${knownServers ? '; servers=' + [...knownServers].join(',') : '; servers=unknown'}`
@@ -353,7 +353,7 @@ function installPatch(ctx, rules, knownServers, seen, catalog, missingParams, lo
 function provideStatus(ctx, getter) {
   try {
     if (typeof ctx.provide === 'function') {
-      ctx.provide('toolwarden', { status: getter, PROTECTED_TOOLS });
+      ctx.provide('tool_keeper', { status: getter, PROTECTED_TOOLS });
     }
   } catch {
     // provide 失败不影响过滤本身
@@ -363,7 +363,7 @@ function provideStatus(ctx, getter) {
 /** 统一的日志出口；拿不到 logger 就退回 console。 */
 function makeLogger(ctx) {
   const emit = (level, message) => {
-    const line = '[toolwarden] ' + message;
+    const line = '[tool-keeper] ' + message;
     try {
       const logger = typeof ctx.get === 'function' ? ctx.get('logger') : undefined;
       if (logger && typeof logger[level] === 'function') {

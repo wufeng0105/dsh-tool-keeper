@@ -11,7 +11,7 @@
  * 单独一个模块：`rules.js` 是纯函数核心、不依赖宿主也不用 node 内置模块，
  * 那条性质有测试守着；把 crypto 塞进去会毁掉它。
  *
- * @module dsh-toolwarden/hash
+ * @module dsh-tool-keeper/hash
  */
 
 import { createHash } from 'node:crypto';

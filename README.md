@@ -1,4 +1,4 @@
-# Toolwarden · 工具守卫
+# Tool Keeper · 工具守卫
 
 决定哪些工具进入模型的上下文，并能重写工具与参数的说明文字。
 
@@ -12,7 +12,7 @@
 
 实测（本机）：tinyfish 43 个工具 = 96,413 字符 ≈ 27,500 tokens/轮，占全部工具开销的一半以上，而其中大部分是 `create_dataset` / `top_up_wallet` / `cancel_monitor` 这类平时用不到的管理工具。
 
-**Toolwarden 做两件事：**
+**Tool Keeper 做两件事：**
 
 1. **准入** —— 决定哪些工具进入上下文
 2. **改写** —— 决定进来的工具说什么话
@@ -25,7 +25,7 @@
 
 装上即用。**出厂状态不管理任何工具** —— 工具数量和说明与没装插件完全一致，由你自己决定关哪个、改哪个。
 
-配置在 `~/.dsh/toolwarden.json`，首次运行自动生成（全空的基线）。
+配置在 `~/.dsh/tool-keeper.json`，首次运行自动生成（全空的基线）。
 
 **改完需重启 DSH 生效**（工具在注册期拦截，已注册的不会自动更新）。
 
@@ -68,7 +68,7 @@
 
 ## 用对话管理
 
-不用手改 JSON，直接跟模型说。模型会调 `toolwarden` 工具：
+不用手改 JSON，直接跟模型说。模型会调 `tool-keeper` 工具：
 
 | 你说 | 它做什么 |
 |---|---|
@@ -87,7 +87,7 @@
 
 ## 手改配置
 
-也可以直接编辑 `~/.dsh/toolwarden.json`：
+也可以直接编辑 `~/.dsh/tool-keeper.json`：
 
 ```jsonc
 {
@@ -137,7 +137,7 @@
 
 ```
 read  write  edit  glob  grep  pwsh
-present  todo_write  ask_user_question  toolwarden  skill
+present  todo_write  ask_user_question  tool-keeper  skill
 ```
 
 写入受保护工具会得到明确的诊断，不是静默忽略。

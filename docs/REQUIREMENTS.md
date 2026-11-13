@@ -1,4 +1,4 @@
-# Toolwarden 需求与决策
+# Tool Keeper 需求与决策
 
 > 本文是需求基线。功能点必须先在这里写清楚，再动代码。
 > 证据分级：L1 运行时实测 / L3 源码核对 / UNVERIFIABLE 未验证。
@@ -7,7 +7,7 @@
 
 ## 一、这个项目是什么
 
-**Toolwarden（工具守卫）决定模型能看见哪些工具，以及看见什么样的工具说明。**
+**Tool Keeper（工具守卫）决定模型能看见哪些工具，以及看见什么样的工具说明。**
 
 一句话区别于已有的三个实现：
 
@@ -17,7 +17,7 @@
 | `dsh-toolgate`（未安装） | 分组隐藏 + 分发守卫 | 只能"有/无"，不能改内容 |
 | `dsh-mcp-tool-filter`（未安装） | 注册入口拦截 | 只管 MCP；不能改内容 |
 
-**三者都只能隐藏，不能改写。** Toolwarden 的第一个差异化能力是：**工具说明的文字由你重写。**
+**三者都只能隐藏，不能改写。** Tool Keeper 的第一个差异化能力是：**工具说明的文字由你重写。**
 
 ---
 
@@ -141,7 +141,7 @@ return { name, description, parameters: inputSchema, output: ... }
 
 ### D3 配置存独立文件
 
-`~/.dsh/toolwarden.json`，不写进 `cordis.patch.yml`。
+`~/.dsh/tool-keeper.json`，不写进 `cordis.patch.yml`。
 
 **理由**：界面要频繁写，而 profile 的 patch 是用户主配置、混着别人的行和注释；UI 程序化改写它有覆盖风险。这是 `dsh-skill-mcp-panel` 的 ADR-0003 踩过的坑。
 
@@ -206,7 +206,7 @@ D1 天然规避此问题：补丁装在注册入口，MCP 何时连上都会经�
 | A6 | 保护生效 | ①界面尝试关 `read` → 被拒绝且有可见提示 ②手改配置把 `read` 加入隐藏 → 仍不被隐藏，且报错 | ✅ 双路径 |
 | A7 | 还原生效 | ①清空配置 → 名字集合 == 基线 ②卸载插件 → 名字集合 == 基线 | ✅ 双路径 |
 | A8 | 诊断可见 | 三态分别验证（见下） | ✅ |
-| **A9** | **配置损坏不锁死** | 故意写坏 `toolwarden.json`（半截 JSON）→ DSH 正常启动、工具集合 == 基线、界面报错 | ✅（审计 M7 新增） |
+| **A9** | **配置损坏不锁死** | 故意写坏 `tool-keeper.json`（半截 JSON）→ DSH 正常启动、工具集合 == 基线、界面报错 | ✅（审计 M7 新增） |
 
 ### A8 的三态定义（审计 M4 要求）
 
@@ -272,7 +272,7 @@ D1 天然规避此问题：补丁装在注册入口，MCP 何时连上都会经�
 > Put tunable values in the plugin's `Config` so users change them in `cordis.patch.yml`;
 > the user's patch layer survives upgrades.
 
-**冲突记录**：这条推荐把可调值放 `Config`，而 D3 选择独立文件 `~/.dsh/toolwarden.json`。
+**冲突记录**：这条推荐把可调值放 `Config`，而 D3 选择独立文件 `~/.dsh/tool-keeper.json`。
 理由见 D3（UI 频繁写、避免覆盖用户主配置），但需记录这个偏离。
 
 ---

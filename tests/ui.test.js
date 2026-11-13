@@ -89,13 +89,13 @@ function renderView(data, extra = {}) {
 // ─────────────────────────────────────────────
 test('ui: 装载 id 正确，导出 apply/inject', () => {
   const { mod, id } = loadUi();
-  assert.equal(id, 'dsh-toolwarden-ui');
+  assert.equal(id, 'dsh-tool-keeper-ui');
   assert.equal(typeof mod.apply, 'function');
   assert.equal(mod.inject.length, 1);
   assert.equal(mod.inject[0], 'slots');
 });
 
-test('ui: apply 注册到 settings.section，id=toolwarden', () => {
+test('ui: apply 注册到 settings.section，id=tool-keeper', () => {
   const { mod } = loadUi();
   let registered = null;
   mod.apply({
@@ -107,8 +107,8 @@ test('ui: apply 注册到 settings.section，id=toolwarden', () => {
   });
   assert.ok(registered !== null);
   assert.equal(registered.opts.name, 'settings.section');
-  assert.equal(registered.opts.id, 'toolwarden');
-  assert.equal(registered.opts.label(), '工具守卫');
+  assert.equal(registered.opts.id, 'tool-keeper');
+  assert.equal(registered.opts.label(), 'Tool Keeper');
   assert.equal(typeof registered.comp, 'function');
 });
 
@@ -322,7 +322,7 @@ test('ui: 只配了参数改写（没有 description）时也不该一展开就�
 test('ui: 标题行只有标题与说明，不挂状态标签和统计块', () => {
   const html = renderView(makeData());
   assert.ok(html.includes('tw-head'));
-  assert.ok(html.includes('工具守卫'));
+  assert.ok(html.includes('Tool Keeper'));
   assert.ok(html.includes('tw-intro'));
 
   // 这些是用户明确要求删掉的：顶部标签与底部按钮重复，统计块是无效数字

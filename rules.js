@@ -1,5 +1,5 @@
 /**
- * dsh-toolwarden — 规则引擎（纯函数，无宿主依赖）。
+ * dsh-tool-keeper — 规则引擎（纯函数，无宿主依赖）。
  *
  * 这一层的职责：给定「当前注册表里的工具」和「用户配置」，算出每一个工具应当
  * 被如何处理。它不碰 ctx、不碰文件、不碰网络，所以可以用 node --test 直接验证。
@@ -22,7 +22,7 @@
  *
  * 归一化时取最具体者，不保存三层原始意图。
  *
- * @module dsh-toolwarden/rules
+ * @module dsh-tool-keeper/rules
  */
 
 /** MCP 工具名的固定前缀。 */
@@ -32,7 +32,7 @@ export const MCP_PREFIX = 'mcp__';
 export const PROTECTED_TOOLS = Object.freeze([
   'read', 'write', 'edit', 'glob', 'grep', 'pwsh',
   'present', 'todo_write', 'ask_user_question',
-  'toolwarden', 'skill',
+  'tool_keeper', 'skill',
 ]);
 
 /**
@@ -65,7 +65,7 @@ export function isProtected(name) {
  * 归一化配置。非法输入不抛异常 —— 按最宽松解释处理并记入 problems，
  * 因为一个坏配置绝不能中断工具注册链（REQUIREMENTS R4.5）。
  *
- * @param raw - 来自 toolwarden.json 的原始对象
+ * @param raw - 来自 tool-keeper.json 的原始对象
  * @returns {{ rules: object, problems: string[] }} 归一化后的规则与问题清单
  */
 export function normalizeConfig(raw) {
@@ -370,7 +370,7 @@ export function applyToDefinition(definition, rules, knownServers) {
  * - R3.3「展开看到并编辑」—— 界面要显示「现在是什么」和「原来是怎样」
  * - R3.4「token 占用」—— 没有原文算不出省了多少
  *
- * @module dsh-toolwarden/catalog
+ * @module dsh-tool-keeper/catalog
  */
 export class ToolCatalog {
   constructor() {

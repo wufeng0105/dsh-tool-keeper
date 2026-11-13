@@ -4,7 +4,7 @@
 >
 > **「能用」的判定不是「测试全绿」**：`node --check` 和 `npm pack` 全绿也证明不了它装得上。
 > 判定它真的能用，只有三条：①`preflight` 零 FAIL；②装一次，读返回里的 `application`；
-> ③重启后 poke 真实端点（`POST /toolwarden/api`）与 `slots` 里能看到自己这一页。
+> ③重启后 poke 真实端点（`POST /tool-keeper/api`）与 `slots` 里能看到自己这一页。
 
 ## 开工前
 
@@ -29,8 +29,8 @@
 |---|---|---|
 | 宿主半 | `index.js` | 包装 `ctx.tools.register`，`inject = ['tools']` |
 | 判定核心 | `rules.js` | 纯函数，无宿主依赖，可直接单测 |
-| 模型工具 | `tool.js` | `toolwarden`，7 个 action |
-| 设置页路由 | `api.js` | `/toolwarden/api`，`state` / `set` / `reset` |
+| 模型工具 | `tool.js` | `tool-keeper`，7 个 action |
+| 设置页路由 | `api.js` | `/tool-keeper/api`，`state` / `set` / `reset` |
 | 配置指纹 | `hash.js` | 判断「磁盘配置 ≠ 启动时加载的配置」 |
 | 出厂配置 | `baseline.js` | **全空**：不替用户做决定 |
 | 浏览器半 | `ui/` | `settings.section`，`order: 50` |

@@ -1,5 +1,5 @@
 /**
- * dsh-toolwarden —— 出厂基线：**什么都不做**。
+ * dsh-tool-keeper —— 出厂基线：**什么都不做**。
  *
  * ## 为什么是空的
  *
@@ -27,7 +27,7 @@
  * 如果用户想要一套现成的推荐值，那是**预设（preset）**，应该显式选择，
  * 而不是偷偷写进出厂状态。
  *
- * @module dsh-toolwarden/baseline
+ * @module dsh-tool-keeper/baseline
  */
 
 /** 内置工具的出厂策略：一个都不关。 */
@@ -41,15 +41,15 @@ export const BASELINE_SERVERS = Object.freeze({});
  *
  * @param {object} [options]
  * @param {boolean} [options.enabled] - 总开关，默认 true
- * @returns {object} 可直接写入 toolwarden.json 的对象
+ * @returns {object} 可直接写入 tool-keeper.json 的对象
  */
 export function createBaselineConfig(options = {}) {
   const enabled = options.enabled !== false;
   return {
     _comment: [
-      'Toolwarden 出厂状态：不管理任何工具，全部原样。',
+      'Tool Keeper 出厂状态：不管理任何工具，全部原样。',
       '要关工具，用 servers / tools 填写；要改说明，用 rewrite 填写。',
-      '也可以用模型工具 toolwarden（action=list 先看有哪些，再决定关哪个）。',
+      '也可以用模型工具 tool-keeper（action=list 先看有哪些，再决定关哪个）。',
       '被 PROTECTED_TOOLS 保护的基础工具（read/write/edit/pwsh 等）任何配置都关不掉。',
       '全部放行：把 enabled 设为 false。',
     ],

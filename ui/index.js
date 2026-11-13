@@ -13,7 +13,7 @@
  */
 
 /** 诊断标签；只出现在 Loader 日志与失败链里。 */
-export const name = 'toolwarden-ui';
+export const name = 'tool-keeper-ui';
 
 /** 宿主侧无事可做。 */
 export function apply() {}

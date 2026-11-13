@@ -110,7 +110,7 @@ mcp__tinyfish__create_dataset 关        开   ← 不一致
 
 - **孤立术语**：说明里的 `schema` 全页只出现一次，改成「工具定义」。
 - **加载态文案与加载后不一致**：加载中显示短版说明，加载后换成长版，造成文字跳变。
-- **类名漂移**：`.tw-itemT` 无意义，改为 `.tw-item`。
+- **类名漂移**：`.tk-itemT` 无意义，改为 `.tk-item`。
 - **改写入参对象**：View 里往 `role` 上挂 `rewritten`/`currentRewrite`，
   是纯展示组件里的副作用；改成外部查表。
 
@@ -120,7 +120,7 @@ mcp__tinyfish__create_dataset 关        开   ← 不一致
 
 这两项是**能力缺口**，不是 bug，改动超出「审计并修正」的范围，单列出来。
 
-1. **参数级改写进不去**。`toolwarden` 模型工具和配置都支持
+1. **参数级改写进不去**。`tool-keeper` 模型工具和配置都支持
    改写参数说明（`rewrite.<tool>.properties`），但页面只编辑工具级 `description`。
    也就是说：页面自称管理入口，实际只覆盖了一半的改写能力。
 
