@@ -72,8 +72,10 @@ window.__ModuleLoader__.load({
       '.tw-groupToggle:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
 
       /* ── 列表与行 ── */
-      '.tw-list{display:flex;flex-direction:column;border-top:1px solid var(--dsw-alias-border-l2)}',
+      '.tw-list{display:flex;flex-direction:column}',
       '.tw-item{display:flex;flex-direction:column}',
+      /* 行与行之间用发丝线隔开：没有分隔线的长条列表看不出每条边界 */
+      '.tw-item+.tw-item{border-top:.5px solid var(--dsw-alias-border-l2)}',
       '.tw-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:44px;padding:6px 10px;transition:background 150ms ease}',
       '.tw-row:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.tw-icon{flex:none;width:34px;height:34px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-1);display:flex;align-items:center;justify-content:center;position:relative}',
