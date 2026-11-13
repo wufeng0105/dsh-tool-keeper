@@ -54,11 +54,15 @@
 开关状态来自引擎判定，不是页面自己推断的：配置里如果写了服务器白名单或服务器总开关，
 页面会显示真实结果，不会把引擎已经丢掉的工具显示成「开」。
 
-改造前后对比（实测）：
+**被服务器规则关掉的行，点开关是打开它** —— 写入一条单工具 `keep` 覆盖服务器规则，
+而不是再关一次。
 
-```
-设置页 105 个工具 / 4 组 / ≈35,603 tokens
-```
+**改完还没重启时，页面顶部会有一条常驻提示**，说明下面的数字是重启后才会成立的值。
+这条提示由服务端比对「磁盘配置」与「启动时加载的配置」得出，不依赖页面状态，
+刷新也不会消失。
+
+页面上的统计（工具数、token 合计、节省量）随实际挂载的 MCP 服务器变化，
+不写死在文档里。
 
 ---
 
@@ -177,8 +181,9 @@ present  todo_write  ask_user_question  toolwarden  skill
 
 | 限制 | 说明 |
 |---|---|
-| 改配置需重启 | 工具在注册期拦截，已注册的不自动更新。即时生效需另加 `restrict()` 路径，**未实现** |
+| 改配置需重启 | 工具在注册期拦截，已注册的不自动更新。页面会持续提示「还没重启」。即时生效需另加 `restrict()` 路径，**未实现** |
 | 设置页不能改参数说明 | 参数级改写（`rewrite.<tool>.properties`）模型工具与配置支持，页面只编辑工具级说明 |
+| 参数改写无独立开关 | REQUIREMENTS 的 D2 写过「参数级改写默认关闭、需显式开启」，实际没做开关：配了就生效 |
 | 恢复出厂无二次确认 | 一次点击即清空全部规则；API 会留 `.bak-<时间戳>` 备份，但页面不提示备份位置 |
 | 不改结构 | 有意为之：结构改错会让工具直接报错，文本改错只是说明不准 |
 | 出厂零配置 | 有意为之：不替用户做决定。装完节省为 0，需自己关 |
@@ -189,9 +194,10 @@ present  todo_write  ask_user_question  toolwarden  skill
 
 | 文件 | 内容 |
 |---|---|
-| [docs/REQUIREMENTS.md](./docs/REQUIREMENTS.md) | 需求、技术决策、验收标准 |
+| [docs/REQUIREMENTS.md](./docs/REQUIREMENTS.md) | 需求、技术决策、验收标准；末尾有「实现状态与偏离」表 |
 | [docs/UI-AUDIT.md](./docs/UI-AUDIT.md) | 前端审计记录（累积状态问题与修法） |
-| [docs/VERIFICATION-P4.md](./docs/VERIFICATION-P4.md) | 运行时验证记录（含未验证项） |
+| [docs/INDEPENDENT-AUDIT.md](./docs/INDEPENDENT-AUDIT.md) | 独立审计报告与逐条处理结果 |
+| [docs/VERIFICATION-P4.md](./docs/VERIFICATION-P4.md) | 运行时验证记录。**本记录止于 0.2.0**，界面相关结论已被 0.3.x 取代 |
 | [docs/WORKING-AGREEMENT.md](./docs/WORKING-AGREEMENT.md) | 阶段模型、授权边界、证据分级 |
 | [CHANGELOG.md](./CHANGELOG.md) | 版本变更 |
 
@@ -201,7 +207,7 @@ present  todo_write  ask_user_question  toolwarden  skill
 
 ```bash
 npm install   # 只有测试需要（react + react-dom 用于离线渲染校验）
-npm test      # 138 条测试
+npm test      # 161 条测试
 node <plugin-kit>/skills/plugin-kit/scripts/preflight.mjs .
 ```
 
@@ -210,3 +216,4 @@ node <plugin-kit>/skills/plugin-kit/scripts/preflight.mjs .
 
 **测试纪律**：每个断言型检查都做过变异测试——故意改坏实现，确认测试会红。
 审计报告里只认变异结果，不认「测试通过」这句话本身。
+独立审计跑过 27 个变异、12 个没被捕获，那 12 个已逐条补上测试并复核。

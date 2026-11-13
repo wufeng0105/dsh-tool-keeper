@@ -270,9 +270,16 @@ test('ui: 展开后出现原文 + 改写框 + 保存按钮', () => {
   assert.ok(html.includes('保存说明'));
 });
 
-test('ui: 展开行 aria-expanded=true', () => {
+test('ui: 展开的工具行 aria-expanded=true，未展开的为 false', () => {
   const html = renderView(makeData(), { expandedName: 'mcp__tinyfish__search' });
-  assert.ok(html.includes('aria-expanded="true"'));
+  // 不能只断言 includes('aria-expanded="true"')：
+  // 分组头按钮本身就带 aria-expanded="true"，那样断言永远能过（空转）。
+  // 必须按工具名的按钮单独取。
+  const openBtn = html.match(/<button[^>]*aria-expanded="true"[^>]*>mcp__tinyfish__search</);
+  assert.ok(openBtn !== null, '展开的那一行必须 aria-expanded=true');
+
+  const closedBtn = html.match(/<button[^>]*aria-expanded="false"[^>]*>mcp__tinyfish__fetch_content</);
+  assert.ok(closedBtn !== null, '未展开的行必须 aria-expanded=false');
 });
 
 test('ui: 有未保存修改时提示', () => {
@@ -281,6 +288,32 @@ test('ui: 有未保存修改时提示', () => {
     draft: '改过的说明',
   });
   assert.ok(html.includes('有未保存修改'));
+});
+
+test('ui: 没有修改时不该显示「有未保存修改」', () => {
+  // 未配置任何改写、草稿为空 → 不该报脏
+  const clean = renderView(makeData(), { expandedName: 'mcp__tinyfish__search', draft: '' });
+  assert.ok(!clean.includes('有未保存修改'), '空草稿且无改写时不该报脏');
+
+  // 已有改写且草稿与之一致 → 也不该报脏
+  const data = makeData();
+  data.rules.rewrites['mcp__tinyfish__search'] = { description: '已保存的说明' };
+  const same = renderView(data, {
+    expandedName: 'mcp__tinyfish__search',
+    draft: '已保存的说明',
+  });
+  assert.ok(!same.includes('有未保存修改'), '草稿与已保存值相同不该报脏');
+});
+
+test('ui: 只配了参数改写（没有 description）时也不该一展开就报脏', () => {
+  const data = makeData();
+  // properties-only 形态：没有 description 字段
+  data.rules.rewrites['mcp__tinyfish__search'] = {
+    properties: { include_selectors: '只提取匹配元素' },
+  };
+  const html = renderView(data, { expandedName: 'mcp__tinyfish__search', draft: '' });
+  assert.ok(!html.includes('有未保存修改'),
+    '没有 description 时当前值应视为空字符串，不能与 undefined 比较');
 });
 
 // ─────────────────────────────────────────────
@@ -305,6 +338,40 @@ test('ui: 摘要是一行小字，含总数与 token', () => {
   assert.ok(/共 5 个工具 · ≈[\d,]+ tokens/.test(html));
 });
 
+// ─────────────────────────────────────────────
+// 开关决策：必须按引擎判定决定写什么，不能按配置里的条目
+// ─────────────────────────────────────────────
+test('ui: 被服务器规则关掉时，点开关写的是 keep（打开）', () => {
+  const { mod } = loadUi();
+  const next = mod.__testing.nextToolsAfterToggle({}, 'mcp__tinyfish__fetch_content', 'drop');
+  assert.equal(next['mcp__tinyfish__fetch_content'], 'keep',
+    '引擎判定为 drop 时，点击意图是「打开」，必须写 keep 覆盖服务器规则');
+});
+
+test('ui: 正在生效时，点开关写的是 drop（关闭）', () => {
+  const { mod } = loadUi();
+  const next = mod.__testing.nextToolsAfterToggle({}, 'mcp__tinyfish__search', 'keep');
+  assert.equal(next['mcp__tinyfish__search'], 'drop');
+});
+
+test('ui: 开关决策不看配置里已有的条目', () => {
+  const { mod } = loadUi();
+  // 配置里有 drop 条目，但引擎判定 keep（例如被别的规则救回来）→ 点击应关闭
+  const next = mod.__testing.nextToolsAfterToggle(
+    { 'mcp__x__y': 'drop' }, 'mcp__x__y', 'keep');
+  assert.equal(next['mcp__x__y'], 'drop', '以引擎判定为准，不以条目为准');
+});
+
+test('ui: 开关决策不改原对象', () => {
+  const { mod } = loadUi();
+  const before = { a: 'drop' };
+  mod.__testing.nextToolsAfterToggle(before, 'b', 'keep');
+  assert.deepEqual(before, { a: 'drop' }, '不能改传入的 tools');
+});
+
+// ─────────────────────────────────────────────
+// 有隐藏时才在摘要里提节省
+// ─────────────────────────────────────────────
 test('ui: 有隐藏时才在摘要里提节省', () => {
   const none = renderView(makeData());
   assert.ok(!none.includes('每轮省'), '没有隐藏时不该提节省');

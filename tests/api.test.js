@@ -286,6 +286,78 @@ test('api: 保护工具永远 effective=keep 且 source=protected', async () => 
 });
 
 // ─────────────────────────────────────────────
+// stale：磁盘配置与启动时加载的不一致（改了还没重启）
+// ─────────────────────────────────────────────
+test('api: 配置未改动时 stale=false', async () => {
+  const { captured, dir, dispose } = setup();
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  assert.equal(r.json.stale, false);
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: 磁盘配置与启动指纹不同时报 stale=true', async () => {
+  const captured = { route: undefined };
+  const dir = mkdtempSync(join(tmpdir(), 'toolwarden-stale-'));
+  const configPath = join(dir, 'toolwarden.json');
+  writeFileSync(configPath, JSON.stringify({ enabled: true, servers: {}, tools: {}, rewrite: {} }));
+
+  // 模拟「启动时」的指纹：把它设成与当前磁盘内容不同
+  const ctx = {
+    inject(names, cb) {
+      cb({
+        webServer: {
+          register(route) { captured.route = route; return () => {}; },
+        },
+      });
+    },
+  };
+  const deps = {
+    configPath,
+    catalog: new ToolCatalog(),
+    snapshot: () => ({
+      patched: true, enabled: true, configPath,
+      loadedHash: 'deadbeefdeadbeef', // 与磁盘内容不可能相同
+      stats: {}, problems: [], diagnostics: [],
+    }),
+    log: { info() {}, warn() {} },
+  };
+  const dispose = mountApi(ctx, deps);
+
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  assert.equal(r.json.stale, true, '必须能说出「改了还没重启」');
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: 没有启动指纹时 stale=false（不瞎报）', async () => {
+  const captured = { route: undefined };
+  const dir = mkdtempSync(join(tmpdir(), 'toolwarden-stale2-'));
+  const configPath = join(dir, 'toolwarden.json');
+  writeFileSync(configPath, JSON.stringify({ enabled: true }));
+
+  const ctx = {
+    inject(_n, cb) {
+      cb({ webServer: { register(route) { captured.route = route; return () => {}; } } });
+    },
+  };
+  const dispose = mountApi(ctx, {
+    configPath,
+    catalog: new ToolCatalog(),
+    snapshot: () => ({
+      patched: true, configPath, loadedHash: undefined,
+      stats: {}, problems: [], diagnostics: [],
+    }),
+    log: { info() {}, warn() {} },
+  });
+
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  assert.equal(r.json.stale, false, '拿不到基准就不要声称过期');
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ─────────────────────────────────────────────
 // op = set
 // ─────────────────────────────────────────────
 test('api: set 写入 tools 并返回 needRestart', async () => {

@@ -33,6 +33,7 @@ import {
 import { registerTool } from './tool.js';
 import { createBaselineConfig } from './baseline.js';
 import { mountApi } from './api.js';
+import { hashText } from './hash.js';
 
 export const name = 'dsh-toolwarden';
 
@@ -63,7 +64,7 @@ function readConfig(path) {
       try {
         const baseline = createBaselineConfig();
         writeConfigFile(path, baseline);
-        return { raw: baseline, error: undefined, seeded: true };
+        return { raw: baseline, error: undefined, seeded: true, text: JSON.stringify(baseline, null, 2) + '\n' };
       } catch (seedError) {
         return { raw: undefined, error: `cannot seed ${path}: ${String(seedError?.message ?? seedError)}` };
       }
@@ -71,10 +72,10 @@ function readConfig(path) {
     return { raw: undefined, error: `cannot read ${path}: ${String(error?.message ?? error)}` };
   }
   try {
-    return { raw: JSON.parse(text), error: undefined };
+    return { raw: JSON.parse(text), error: undefined, text };
   } catch (error) {
     // 半截 JSON / 手改写坏：按空配置运行，绝不中断注册（R4.5）
-    return { raw: undefined, error: `invalid JSON in ${path}: ${String(error?.message ?? error)}` };
+    return { raw: undefined, error: `invalid JSON in ${path}: ${String(error?.message ?? error)}`, text };
   }
 }
 
@@ -161,8 +162,12 @@ export function apply(ctx, config) {
   const log = makeLogger(ctx);
 
   const path = configPath(settings);
-  const { raw, error: readError } = readConfig(path);
+  const { raw, error: readError, text: configText } = readConfig(path);
   const { rules, problems } = normalizeConfig(raw);
+
+  // 启动时这份配置的指纹。设置页拿它跟磁盘当前内容比对，
+  // 判断「保存后还没重启」这件事——否则页面会按未生效的配置算节省。
+  const loadedHash = hashText(configText);
 
   if (readError !== undefined) {
     // R4.5：配置坏了按全放行跑，但必须报出来
@@ -170,47 +175,37 @@ export function apply(ctx, config) {
   }
   for (const problem of problems) log.warn('config: ' + problem);
 
-  // R4.4 总开关：读 toolwarden.json 的 enabled，不依赖插件 Config（那要改 YAML + 重启）
-  if (rules.enabled === false) {
+  const disabled = rules.enabled === false;
+  if (disabled) {
+    // R4.4 总开关：读 toolwarden.json 的 enabled，不依赖插件 Config（那要改 YAML + 重启）
+    //
+    // 注意：禁用时**仍然**注册模型工具与设置页 API。它们是唯一的恢复入口——
+    // 早先的写法在这里直接 return，于是关掉总开关之后重启，工具和 API 一起消失，
+    // 用户只能手改 JSON 才能改回来。逃生门不能只有门没有把手。
     log.info('disabled by toolwarden.json (enabled: false); no tool is filtered');
-    provideStatus(ctx, () => ({
-      patched: false,
-      reason: 'disabled in config',
-      stats: { total: 0, dropped: 0, rewritten: 0, kept: 0 },
-      problems: [...problems, readError].filter(Boolean),
-      diagnostics: [],
-      catalog: [],
-      configPath: path,
-    }));
-    return;
   }
 
-  const knownServers = readKnownServers(settings);
+  const knownServers = disabled ? undefined : readKnownServers(settings);
   const seen = new Set();
   const catalog = new ToolCatalog();
   const stats = { total: 0, dropped: 0, rewritten: 0, kept: 0, paramsRewritten: 0 };
   const missingParams = new Map(); // toolName -> string[]
 
-  /** 装补丁。返回 { patched, restore, reason } */
-  const patch = installPatch(ctx, rules, knownServers, seen, stats, catalog, missingParams, log);
+  /**
+   * 装补丁。禁用时不装；任何异常都返回 patched:false 而不是抛出。
+   * @type {{patched: boolean, reason?: string, restore: () => void}}
+   */
+  const patch = disabled
+    ? { patched: false, reason: 'disabled in config', restore: () => {} }
+    : installPatch(ctx, rules, knownServers, seen, stats, catalog, missingParams, log);
 
-  if (!patch.patched) {
+  if (!disabled && !patch.patched) {
     log.warn('could not install the registration patch: ' + patch.reason);
-    // D6：失败可见。通过一个自注册的诊断服务暴露给界面/其他消费者
-    provideStatus(ctx, () => ({
-      patched: false,
-      reason: patch.reason,
-      stats: { ...stats },
-      problems: [...problems, readError].filter(Boolean),
-      diagnostics: [],
-      catalog: [],
-      configPath: path,
-    }));
-    return;
   }
 
   // 定期把诊断算出来（首次注册后即可）
   const computeDiagnostics = () => {
+    if (disabled) return []; // 禁用时没有任何规则生效，报诊断只会是噪音
     try {
       const base = diagnose(rules, [...seen], knownServers ?? new Set());
       // R2.2 的参数名不存在也要报出来
@@ -228,13 +223,14 @@ export function apply(ctx, config) {
 
   /** 供界面与模型工具读取的完整快照。 */
   const snapshot = () => ({
-    patched: true,
-    reason: undefined,
+    patched: patch.patched,
+    reason: patch.reason,
     stats: { ...stats },
     problems: [...problems, readError].filter(Boolean),
     diagnostics: computeDiagnostics(),
     configPath: path,
     enabled: rules.enabled,
+    loadedHash,
     groups: [...catalog.groups()].map(([group, entries]) => ({
       group,
       entries: entries.map(e => ({

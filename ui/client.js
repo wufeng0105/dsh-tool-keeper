@@ -170,6 +170,24 @@ window.__ModuleLoader__.load({
     function estimateTokens(chars) { return Math.round(chars / 3.5); }
     function num(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 
+    /**
+     * 点击开关后应该写入的 `tools` 映射。
+     *
+     * `effective` 是点击那一刻引擎的判定，**不是**配置里的条目：
+     * 被服务器白名单/总开关关掉的行，`tools` 里根本没有条目，
+     * 若按 `tools[name]` 判断就会写成 drop（再关一次），从界面永远打不开。
+     *
+     * 打开 = 写 keep 覆盖（单工具优先级高于服务器规则）；关闭 = 写 drop。
+     *
+     * 抽成纯函数，因为这是唯一会写配置的交互，必须能单独测。
+     */
+    function nextToolsAfterToggle(tools, name, effective) {
+      var next = Object.assign({}, tools);
+      if (effective === 'drop') next[name] = 'keep';
+      else next[name] = 'drop';
+      return next;
+    }
+
     function chevron(open) {
       return h('svg', {
         className: 'tw-chevron' + (open ? ' is-open' : ''),
@@ -252,7 +270,10 @@ window.__ModuleLoader__.load({
             checked: hidden !== true,
             disabled: props.busy,
             label: (hidden ? '启用 ' : '隐藏 ') + role.name,
-            onClick: props.onToggle,
+            // 必须把「当前引擎判定」一起传出去。只看 rules.tools 是错的：
+            // 被服务器规则关掉的行，tools 里没有条目，点开关会再写一条 drop，
+            // 于是从界面永远打不开它（再点一次只是删掉 drop，服务器规则还在）。
+            onClick: function () { props.onToggle(role.effective); },
           }),
       );
     }
@@ -323,6 +344,10 @@ window.__ModuleLoader__.load({
           ? h('div', { className: 'tw-list' },
             roles.map(function (role) {
               var expanded = props.expandedName === role.name;
+              // 只配了参数改写（没有 description 字段）的条目，当前值是空字符串，
+              // 不能直接 != undefined，否则一展开就报「有未保存修改」
+              var entry = props.rewrites[role.name] || {};
+              var currentDescription = entry.description === undefined ? '' : entry.description;
               return h('div', { key: role.name, className: 'tw-item' },
                 h(ToolRow, {
                   role: role,
@@ -330,7 +355,7 @@ window.__ModuleLoader__.load({
                   busy: props.busy,
                   expanded: expanded,
                   onExpand: function () { props.onExpand(role.name); },
-                  onToggle: function () { props.onToggle(role.name); },
+                  onToggle: function (effective) { props.onToggle(role.name, effective); },
                 }),
                 expanded
                   ? h(ToolDetail, {
@@ -338,7 +363,7 @@ window.__ModuleLoader__.load({
                     originalDescription: role.originalDescription,
                     draft: props.draft,
                     busy: props.busy,
-                    dirty: props.draft !== (props.rewrites[role.name] || {}).description,
+                    dirty: props.draft !== currentDescription,
                     onDraft: props.onDraft,
                     onSave: function () { props.onSaveRewrite(role.name, props.draft); },
                   })
@@ -415,9 +440,12 @@ window.__ModuleLoader__.load({
           : null,
         props.error !== null && props.error !== undefined
           ? h('p', { className: 'tw-note', 'data-tone': 'bad' }, props.error) : null,
-        props.pending
+        // stale 由服务端比对「磁盘配置」与「启动时加载的配置」得出，是持久事实，
+        // 不放在 React state 里——否则刷新一次提示就消失，用户看到的是「已生效」。
+        data.stale
           ? h('p', { className: 'tw-note', 'data-tone': 'warn' },
-            '已保存到配置。重启 DSH 后生效。') : null,
+            '配置已改，重启 DSH 后才生效。下面显示的是重启后才会成立的状态。')
+          : null,
 
         /* 工具栏 */
         h('div', { className: 'tw-toolbar' },
@@ -500,7 +528,6 @@ window.__ModuleLoader__.load({
       var s0 = React.useState(null); var data = s0[0]; var setData = s0[1];
       var s1 = React.useState(null); var error = s1[0]; var setError = s1[1];
       var s2 = React.useState(false); var busy = s2[0]; var setBusy = s2[1];
-      var s3 = React.useState(false); var pending = s3[0]; var setPending = s3[1];
       var s4 = React.useState(null); var expandedName = s4[0]; var setExpandedName = s4[1];
       var s5 = React.useState(''); var draft = s5[0]; var setDraft = s5[1];
       var s6 = React.useState({}); var collapsed = s6[0]; var setCollapsed = s6[1];
@@ -533,17 +560,18 @@ window.__ModuleLoader__.load({
       function persist(nextTools, done) {
         setBusy(true); setError(null);
         call({ op: 'set', tools: nextTools }).then(function () {
-          setPending(true);
           return call({ op: 'state' });
         }).then(function (next) { setData(next); if (done) done(); })
           .catch(function (e) { setError(e.message); })
           .then(function () { setBusy(false); });
       }
 
-      function onToggle(name) {
-        var next = Object.assign({}, tools);
-        if (next[name] === 'drop') delete next[name]; else next[name] = 'drop';
-        persist(next);
+      /**
+       * 切换一个工具。`effective` 是点击时引擎的判定，不是配置里的条目。
+       * 决策本身在 nextToolsAfterToggle 里，那部分是纯函数、可单测。
+       */
+      function onToggle(name, effective) {
+        persist(nextToolsAfterToggle(tools, name, effective));
       }
 
       function onCollapseAll(shouldCollapse) {
@@ -569,7 +597,6 @@ window.__ModuleLoader__.load({
         else next[name] = entry;
         setBusy(true); setError(null);
         call({ op: 'set', rewrite: next }).then(function () {
-          setPending(true);
           return call({ op: 'state' });
         }).then(function (next2) {
           setData(next2); setExpandedName(null); setDraft('');
@@ -580,7 +607,7 @@ window.__ModuleLoader__.load({
       function onReset() {
         setBusy(true); setError(null);
         call({ op: 'reset' }).then(function () {
-          setPending(true); return call({ op: 'state' });
+ return call({ op: 'state' });
         }).then(function (next) { setData(next); })
           .catch(function (e) { setError(e.message); })
           .then(function () { setBusy(false); });
@@ -595,7 +622,6 @@ window.__ModuleLoader__.load({
       return h(ToolwardenView, {
         data: data,
         busy: busy,
-        pending: pending,
         error: error,
         expandedName: expandedName,
         draft: draft,
@@ -647,6 +673,7 @@ window.__ModuleLoader__.load({
     exports.__testing = {
       estimateTokens: estimateTokens,
       num: num,
+      nextToolsAfterToggle: nextToolsAfterToggle,
       View: ToolwardenView,
       Section: Section,
       CSS: CSS,

@@ -28,6 +28,7 @@ import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from '
 import { dirname } from 'node:path';
 import { normalizeConfig, diagnose, decide } from './rules.js';
 import { createBaselineConfig } from './baseline.js';
+import { hashText } from './hash.js';
 
 export const ROUTE_PATH = '/toolwarden/api';
 
@@ -130,6 +131,19 @@ export function mountApi(ctx, deps) {
           }
           const { rules, problems } = normalizeConfig(config);
 
+          // 磁盘上的配置 != 启动时加载的那份 → 改了但还没重启。
+          // 页面必须能一直说出这件事：否则保存完立刻按新配置算「省了多少」，
+          // 而此刻一个字节都还没生效；刷新一次连提示都会消失。
+          const diskText = (() => {
+            try {
+              return readFileSync(configPath, 'utf8');
+            } catch {
+              return undefined;
+            }
+          })();
+          const stale = typeof s.loadedHash === 'string' && s.loadedHash !== ''
+            && hashText(diskText) !== s.loadedHash;
+
           // 目录里出现过的服务器就是「已知服务器」。用它跑 decide()，
           // 让页面拿到的开关状态与引擎在注册期的判定完全一致。
           // 不这么做的话，配置里的服务器白名单 / 总开关在页面上完全不可见：
@@ -157,6 +171,9 @@ export function mountApi(ctx, deps) {
             patched: s.patched,
             enabled: rules.enabled,
             configPath,
+            // true = 磁盘上的配置与启动时加载的不同，即「改了还没重启」。
+            // 此时页面上的隐藏数/节省量都是「重启后才会成立」的数字。
+            stale,
             stats: s.stats,
             problems: [...problems, ...s.problems],
             diagnostics: s.diagnostics,

@@ -372,3 +372,34 @@ test('diagnose: rewrite 指向不存在的工具 → warning', () => {
   const out = diagnose(rules, ['mcp__tinyfish__search'], new Set(['tinyfish']));
   assert.ok(out.some(d => d.target === 'rewrite.mcp__gone__tool'));
 });
+// ─────────────────────────────────────────────
+// 原型链危险键：必须拒绝，不能「报成功但什么也没写」
+// ─────────────────────────────────────────────
+test('normalizeConfig: 拒绝 __proto__ / constructor / prototype 当配置键', () => {
+  for (const key of ['__proto__', 'constructor', 'prototype']) {
+    // 必须走 JSON.parse —— 对象字面量里的 __proto__ 不走 own property，测不到真实路径
+    const fromTools = normalizeConfig(JSON.parse(`{"tools":{"${key}":"drop"}}`));
+    assert.equal(fromTools.rules.toolOverrides.size, 0, `tools.${key} 不该进规则`);
+    assert.ok(fromTools.problems.some(p => p.includes(key)), `tools.${key} 必须报错`);
+
+    const fromServers = normalizeConfig(JSON.parse(`{"servers":{"${key}":{"enabled":false}}}`));
+    assert.equal(fromServers.rules.disabledServers.size, 0);
+    assert.ok(fromServers.problems.some(p => p.includes(key)), `servers.${key} 必须报错`);
+
+    const fromRewrite = normalizeConfig(JSON.parse(`{"rewrite":{"${key}":"x"}}`));
+    assert.equal(fromRewrite.rules.rewrites.size, 0);
+    assert.ok(fromRewrite.problems.some(p => p.includes(key)), `rewrite.${key} 必须报错`);
+  }
+});
+
+test('normalizeConfig: 正常键不受影响', () => {
+  const { rules, problems } = normalizeConfig({
+    tools: { 'mcp__x__y': 'drop' },
+    servers: { context7: { enabled: false } },
+    rewrite: { 'mcp__x__z': '说明' },
+  });
+  assert.deepEqual(problems, []);
+  assert.equal(rules.toolOverrides.size, 1);
+  assert.equal(rules.disabledServers.size, 1);
+  assert.equal(rules.rewrites.size, 1);
+});

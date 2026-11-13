@@ -100,6 +100,10 @@ export function normalizeConfig(raw) {
       problems.push('servers must be an object, got ' + describe(raw.servers));
     } else {
       for (const [server, value] of Object.entries(raw.servers)) {
+        if (isDangerousKey(server)) {
+          problems.push(`servers.${server} is not a valid server name; ignored`);
+          continue;
+        }
         if (value === null || typeof value !== 'object' || Array.isArray(value)) {
           problems.push(`servers.${server} must be an object, got ` + describe(value));
           continue;
@@ -130,6 +134,10 @@ export function normalizeConfig(raw) {
       problems.push('tools must be an object, got ' + describe(raw.tools));
     } else {
       for (const [name, action] of Object.entries(raw.tools)) {
+        if (isDangerousKey(name)) {
+          problems.push(`tools.${name} is not a valid tool name; ignored`);
+          continue;
+        }
         if (action !== 'drop' && action !== 'keep') {
           problems.push(`tools.${name} must be "drop" or "keep", got ` + describe(action));
           continue;
@@ -150,6 +158,10 @@ export function normalizeConfig(raw) {
       problems.push('rewrite must be an object, got ' + describe(raw.rewrite));
     } else {
       for (const [name, value] of Object.entries(raw.rewrite)) {
+        if (isDangerousKey(name)) {
+          problems.push(`rewrite.${name} is not a valid tool name; ignored`);
+          continue;
+        }
         if (typeof value === 'string') {
           // 字符串是对象形态的简写：只改工具说明
           empty.rewrites.set(name, { description: value, properties: new Map() });
@@ -201,6 +213,19 @@ function describe(value) {
   if (t === 'string') return JSON.stringify(value.slice(0, 40));
   if (t === 'object') return 'object';
   return String(value);
+}
+
+/**
+ * 原型链上的危险键。
+ *
+ * 允许它们当配置键有两个后果：`servers.__proto__ = {...}` 会走到原型 setter，
+ * 结果「报成功但什么也没写」；`tools.__proto__ = 'drop'` 会落盘成一个看着正常
+ * 却永远不生效的条目。两种都是谎报，所以在解析阶段直接拒绝。
+ */
+const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+function isDangerousKey(key) {
+  return DANGEROUS_KEYS.has(key);
 }
 
 /**

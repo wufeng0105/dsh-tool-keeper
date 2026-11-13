@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-toolwarden",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "type": "module",
   "description": "决定哪些工具进入模型上下文，并能重写工具与参数的说明文字。",
@@ -24,24 +24,35 @@
     "tools"
   ],
   "icon": "icon.svg",
-  "exports": { ".": "./index.js" },
+  "exports": {
+    ".": "./index.js"
+  },
   "files": [
     "index.js",
     "rules.js",
     "tool.js",
     "baseline.js",
     "api.js",
+    "hash.js",
     "ui",
     "cordis.patch.yml",
     "icon.svg",
+    "docs",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
   ],
-  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
-  "engines": { "node": ">=20.3.0", "dsh": ">=0.2.2-rc.2 <0.3.0-0" },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "engines": {
+    "node": ">=20.3.0",
+    "dsh": ">=0.2.2-rc.2 <0.3.0-0"
+  },
   "scripts": {
-    "test": "node --test tests/rules.test.js tests/tool.test.js tests/api.test.js tests/ui.test.js"
+    "test": "node --test tests/*.test.js"
   },
   "devDependencies": {
     "react": "^18.3.1",
