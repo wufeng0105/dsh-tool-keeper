@@ -54,6 +54,9 @@ window.__ModuleLoader__.load({
       '.tw-search::placeholder{color:var(--dsw-alias-label-tertiary)}',
       '.tw-search:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}',
       '.tw-actions{display:flex;align-items:center;gap:8px;flex:none}',
+      /* 工具栏两个按钮定死同宽：宽度不能由文字长度撑出来，否则「全部折叠」比「刷新」宽一截 */
+      '.tw-actions .tw-btn{width:92px;padding:0}',
+      '.tw-actions .tw-btn[data-kind=danger]{width:auto;padding:0 14px}',
 
       /* ── 摘要 ── */
       '.tw-summary{margin:10px 0 0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;font-variant-numeric:tabular-nums}',

@@ -341,8 +341,8 @@ test('ui: 搜索框与按钮同高，且垂直居中', () => {
   const css = mod.__testing.CSS;
 
   // 三者必须定同一个高度，否则一高一矮看着就是歪的
-  const search = css.match(/\.tw-search\{([^}]*)\}/)[1];
-  const btn = css.match(/\.tw-btn\{([^}]*)\}/)[1];
+  const search = css.match(/(?:^|\n)\.tw-search\{([^}]*)\}/)[1];
+  const btn = css.match(/(?:^|\n)\.tw-btn\{([^}]*)\}/)[1];
   const hSearch = search.match(/height:(\d+)px/);
   const hBtn = btn.match(/height:(\d+)px/);
   assert.ok(hSearch !== null, '搜索框要定高');
@@ -360,6 +360,40 @@ test('ui: 搜索框与按钮同高，且垂直居中', () => {
   // 搜索图标用 top:50% + translateY 垂直居中，不用写死像素
   assert.ok(/\.tw-searchIcon\{[^}]*top:50%/.test(css), '图标应垂直居中');
   assert.ok(/\.tw-searchIcon\{[^}]*translateY\(-50%\)/.test(css));
+});
+
+test('ui: 工具栏两个按钮同宽，文字居中', () => {
+  const { mod } = loadUi();
+  const css = mod.__testing.CSS;
+
+  // 宽度必须写死，不能由文字长度撑出来，否则「全部折叠」和「刷新」不一样宽
+  const rule = css.match(/\.tw-actions \.tw-btn\{([^}]*)\}/);
+  assert.ok(rule !== null, '必须有 .tw-actions .tw-btn 规则');
+  const w = rule[1].match(/width:(\d+)px/);
+  assert.ok(w !== null, '工具栏按钮要定宽');
+  assert.equal(w[1], '92');
+
+  // 定宽后 padding 必须严格为 0，否则文字会被挤偏
+  // 注意：捕获组不含结尾的 }，所以用行尾锚定；不能只写 /padding:0/——
+  // 那也会匹配到 "padding:0 14px"
+  assert.ok(/padding:0$/.test(rule[1].trim()),
+    '定宽后 padding 必须恰好为 0，不能带左右内边距；实际: ' + rule[1]);
+
+  // 基础按钮规则里已有 inline-flex + 居中，这里确认仍然成立
+  const base = css.match(/(?:^|\n)\.tw-btn\{([^}]*)\}/)[1];
+  assert.ok(/justify-content:center/.test(base), '按钮文字水平居中');
+  assert.ok(/align-items:center/.test(base), '按钮文字垂直居中');
+});
+
+test('ui: 工具栏两个按钮渲染出来结构一致', () => {
+  const html = renderView(makeData());
+  const actions = html.match(/<div class="tw-actions">[\s\S]*?<\/div>/);
+  assert.ok(actions !== null);
+  const btns = actions[0].match(/<button[^>]*class="tw-btn"[^>]*>/g) || [];
+  assert.equal(btns.length, 2, '工具栏应恰好两个按钮');
+  // 两个按钮的 class 属性必须完全一致（宽度由 CSS 统一，不靠字面）
+  const classes = btns.map(b => (b.match(/class="([^"]*)"/) || [])[1]);
+  assert.equal(classes[0], classes[1], '两个按钮的 class 必须一致');
 });
 
 test('ui: 补丁未装时显示提示且胶囊变红', () => {
