@@ -57,10 +57,11 @@ window.__ModuleLoader__.load({
       '.tw-summary{margin:10px 0 0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;font-variant-numeric:tabular-nums}',
       '.tw-divider{height:0;border-top:1px solid var(--dsw-alias-border-l2);margin:12px 0 14px}',
 
-      /* ── 分组卡片 ── */
-      '.tw-group{margin:0 0 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2);overflow:hidden;transition:border-color 150ms ease}',
-      '.tw-group:hover{border-color:var(--dsw-alias-border-l1)}',
-      '.tw-groupHeading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:38px;padding:0 10px;margin:0;user-select:none}',
+      /* ── 分组：标题行在外，工具盒子直接排在页面上，不再套一层卡片 ──
+         三层盒子（分组卡 → 工具盒）会让盒子间隙露出分组卡底色，显脏。
+         去掉分组卡片这一层后，缝隙露出的是页面背景，视觉上干净。 */
+      '.tw-group{margin:0 0 20px}',
+      '.tw-groupHeading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:34px;margin:0 0 8px;user-select:none}',
       '.tw-groupToggle{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;padding:4px 0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}',
       '.tw-groupIcon{flex:none;width:16px;height:16px;stroke:var(--dsw-alias-label-secondary);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}',
       '.tw-groupTitle{min-width:0;margin:0;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',

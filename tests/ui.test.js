@@ -133,13 +133,21 @@ test('ui: 导航排序用 50，不与已知插件撞号', () => {
 // ─────────────────────────────────────────────
 // 分组卡片：外面一个整体
 // ─────────────────────────────────────────────
-test('ui: 每个分组是一个独立卡片（边框+圆角+背景）', () => {
+test('ui: 分组只是标题行，工具盒子直接排在页面上（两层，不是三层嵌套）', () => {
   const { mod } = loadUi();
   const css = mod.__testing.CSS;
-  assert.ok(/\.tw-group\{[^}]*border:1px solid var\(--dsw-alias-border-l2\)/.test(css), '分组卡片要有边框');
-  assert.ok(/\.tw-group\{[^}]*border-radius:12px/.test(css), '分组卡片要圆角 12');
-  assert.ok(/\.tw-group\{[^}]*background:var\(--dsw-alias-bg-layer-2\)/.test(css), '分组卡片要有底色');
-  assert.ok(/\.tw-group\{[^}]*overflow:hidden/.test(css), '卡片要裁切内部圆角');
+  // 分组不再自带卡片（边框/圆角/底色都删了），否则工具盒子之间的缝隙会露出卡片底色
+  const groupRule = css.match(/\.tw-group\{([^}]*)\}/);
+  assert.ok(groupRule !== null, '要有 .tw-group 规则');
+  assert.ok(!/border/.test(groupRule[1]), '分组不能有边框');
+  assert.ok(!/border-radius/.test(groupRule[1]), '分组不能有圆角');
+  assert.ok(!/background/.test(groupRule[1]), '分组不能有底色');
+
+  // 工具盒子才有包裹感
+  const itemRule = css.match(/\.tw-item\{([^}]*)\}/);
+  assert.ok(itemRule !== null);
+  assert.ok(/border:1px solid/.test(itemRule[1]), '工具行要有边框');
+  assert.ok(/border-radius/.test(itemRule[1]), '工具行要圆角');
 });
 
 test('ui: 渲染出两个分组卡片', () => {
@@ -600,7 +608,7 @@ test('ui: CSS 采用宿主的排版刻度', () => {
   assert.ok(!css.includes('tw-saving'), '节省量的样式已随 token 显示一起删除');
   assert.ok(css.includes('font-size:13px;font-weight:600'), '行名 13 w600');
   assert.ok(css.includes('font-size:11px;line-height:13px'), '副标题 11/13');
-  assert.ok(css.includes('border-radius:12px'), '分组卡片圆角 12');
+  assert.ok(css.includes('border-radius:var(--dsw-radius-sm,8px)'), '工具盒圆角走宿主 token');
   assert.ok(css.includes('min-height:44px'), '行高 44');
 });
 
