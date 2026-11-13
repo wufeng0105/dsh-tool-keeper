@@ -30,6 +30,8 @@ import { homedir } from 'node:os';
 import {
   normalizeConfig, applyToDefinition, diagnose, splitMcpName, PROTECTED_TOOLS, ToolCatalog,
 } from './rules.js';
+import { registerTool } from './tool.js';
+import { createBaselineConfig } from './baseline.js';
 
 export const name = 'dsh-toolwarden';
 
@@ -55,7 +57,16 @@ function readConfig(path) {
   try {
     text = readFileSync(path, 'utf8');
   } catch (error) {
-    if (error?.code === 'ENOENT') return { raw: undefined, error: undefined };
+    if (error?.code === 'ENOENT') {
+      // 首次运行：写入出厂基线（审计指出「出厂零配置等于没管理」）
+      try {
+        const baseline = createBaselineConfig();
+        writeConfigFile(path, baseline);
+        return { raw: baseline, error: undefined, seeded: true };
+      } catch (seedError) {
+        return { raw: undefined, error: `cannot seed ${path}: ${String(seedError?.message ?? seedError)}` };
+      }
+    }
     return { raw: undefined, error: `cannot read ${path}: ${String(error?.message ?? error)}` };
   }
   try {
@@ -239,9 +250,22 @@ export function apply(ctx, config) {
 
   provideStatus(ctx, snapshot);
 
+  // 模型可调用的管理工具（审计建议：先给非 JSON 入口，界面是它的薄壳）
+  const offTool = registerTool(ctx, {
+    configPath: path,
+    catalog,
+    snapshot,
+    log,
+  });
+
   ctx.effect(() => () => {
     patch.restore();
-  }, 'toolwarden: restore register');
+    try {
+      offTool();
+    } catch {
+      // 工具可能已随作用域销毁
+    }
+  }, 'toolwarden: restore register and tool');
 
   log.info(
     `patched; config=${path}${knownServers ? '; servers=' + [...knownServers].join(',') : '; servers=unknown'}`
