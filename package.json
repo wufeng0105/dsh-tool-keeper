@@ -1,6 +1,6 @@
 {
   "name": "@local/dsh-tool-keeper",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "private": true,
   "type": "module",
   "description": "决定哪些工具进入模型上下文，并能重写工具与参数的说明文字。",

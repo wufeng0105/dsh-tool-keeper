@@ -183,7 +183,7 @@ present  todo_write  ask_user_question  tool-keeper  skill
 |---|---|
 | 改配置需重启 | 工具在注册期拦截，已注册的不自动更新。页面会持续提示「还没重启」。即时生效需另加 `restrict()` 路径，**未实现** |
 | 设置页不能改参数说明 | 参数级改写（`rewrite.<tool>.properties`）模型工具与配置支持，页面只编辑工具级说明 |
-| 参数改写无独立开关 | REQUIREMENTS 的 D2 写过「参数级改写默认关闭、需显式开启」，实际没做开关：配了就生效 |
+| 参数改写无独立开关 | 设计上曾写「参数级改写默认关闭、需显式开启」，实际没做开关：配了就生效 |
 | 恢复出厂无二次确认 | 一次点击即清空全部规则；API 会留 `.bak-<时间戳>` 备份，但页面不提示备份位置 |
 | 不改结构 | 有意为之：结构改错会让工具直接报错，文本改错只是说明不准 |
 | 出厂零配置 | 有意为之：不替用户做决定。装完节省为 0，需自己关 |
@@ -194,12 +194,8 @@ present  todo_write  ask_user_question  tool-keeper  skill
 
 | 文件 | 内容 |
 |---|---|
-| [docs/REQUIREMENTS.md](./docs/REQUIREMENTS.md) | 需求、技术决策、验收标准；末尾有「实现状态与偏离」表 |
-| [docs/UI-AUDIT.md](./docs/UI-AUDIT.md) | 前端审计记录（累积状态问题与修法） |
-| [docs/INDEPENDENT-AUDIT.md](./docs/INDEPENDENT-AUDIT.md) | 独立审计报告与逐条处理结果 |
-| [docs/VERIFICATION-P4.md](./docs/VERIFICATION-P4.md) | 运行时验证记录。**本记录止于 0.2.0**，界面相关结论已被 0.3.x 取代 |
-| [docs/WORKING-AGREEMENT.md](./docs/WORKING-AGREEMENT.md) | 阶段模型、授权边界、证据分级 |
-| [CHANGELOG.md](./CHANGELOG.md) | 版本变更 |
+| [docs/DESIGN.md](./docs/DESIGN.md) | 范围、技术决策（为什么拦截 register、为什么只改文本）、宿主契约、验收判法 |
+| [CHANGELOG.md](./CHANGELOG.md) | 版本变更，含每次审计的结论与未修项 |
 
 ---
 

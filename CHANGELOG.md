@@ -2,6 +2,40 @@
 
 版本号只升到 `0.3.x`：私有项目，不上 npm，版本号用于标记本机安装的形态变化。
 
+## 0.3.4 — 2026-11-13
+
+### 清理过程文档
+
+原来 `docs/` 有 5 篇、38 KB：需求草案、工作协议、阶段验证记录、两次审计记录。
+它们都是**做这件事的过程日志**，不是现行标准。留着会让后来者分不清哪份算数。
+
+合并成一篇 `docs/DESIGN.md`（范围 + 技术决策 + 宿主契约 + 验收判法 + 已知缺陷），
+删掉 5 篇过程文档。真正有长期价值的内容逐条搬到新文件，不是简单丢弃。
+
+对照同作者已上架插件，它们的 `docs/` 放的是 `ARCHITECTURE.md` / `HOST-CONTRACT.md` /
+`RELEASING.md` 这类长期参考，不是过程日记——这次对齐了这个做法。
+
+新增一条项目纪律（写进 AGENTS.md）：**过程记录不落盘**。留痕只在两处——
+CHANGELOG（版本变更与未修项）、DESIGN.md（决策与被推翻的路线）。
+
+### 清理临时文件
+
+- `~/.dsh/_archive-toolwarden/`（改名时留的 3 个旧配置备份）已删除。
+  当前 `~/.dsh` 下与插件相关的只剩 `tool-keeper.json` 一个。
+- 确认 profile 没有任何临时方案残留：`dependencies` 里只有 `@local/dsh-tool-keeper`，
+  `cordis.patch.yml` 里没有 `tool-mask` / `toolgate` 等历史方案的行。
+
+### 打包体积
+
+`npm pack` 从 20 个文件降到 16 个。
+
+### preflight 记录
+
+稳态 **7 PASS / 0 FAIL / 2 UNVERIFIABLE**。两项 UNVERIFIABLE 的核实结论写进 DESIGN.md：
+slot 注册形态经真机验证（occupants 里 `active: true`）且与已上架插件写法逐字相同，判为合法。
+完整插件集共存仍需一次性 profile 验证，不冒充通过。
+
+161 条测试通过。
 ## 0.3.3 — 2026-11-13
 
 ### 删：工具计数
@@ -37,7 +71,7 @@ action=status 的实测输出
 ## 0.3.2 — 2026-11-13
 
 一次独立对抗性审计（27 个变异，15 捕获 / 12 未捕获）后的修复。
-完整记录见 [docs/INDEPENDENT-AUDIT.md](./docs/INDEPENDENT-AUDIT.md)。
+独立审计的完整结论并入了本文件下方各条版本说明与 [docs/DESIGN.md](./docs/DESIGN.md)「已知缺陷」。
 
 ### 修（会给出错误事实的）
 
@@ -98,7 +132,7 @@ action=status 的实测输出
 138 条。针对本次审计的 5 个变异全部被捕获（`effective` 恒为 keep / `source` 恒为 none /
 开关不读 `effective` / 摘要不跟搜索 / 内置工具标签写「服务器」）。
 
-审计记录见 [docs/UI-AUDIT.md](./docs/UI-AUDIT.md)。
+审计结论见下方各条。
 
 ## 0.3.0 — 2026-11-13
 
