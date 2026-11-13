@@ -46,14 +46,14 @@ window.__ModuleLoader__.load({
       '.tw-title{margin:0;font-size:16px;line-height:24px;font-weight:500;letter-spacing:-.01em}',
       '.tw-intro{margin:3px 0 0;max-width:44em;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}',
 
-      /* ── 工具栏 ── */
+      /* ── 工具栏：三者同高、垂直居中 ── */
       '.tw-toolbar{display:flex;align-items:center;gap:8px;width:100%;min-width:0}',
       '.tw-searchWrap{position:relative;flex:1 1 0;min-width:140px;display:flex;align-items:center}',
-      '.tw-searchIcon{position:absolute;left:9px;width:14px;height:14px;stroke:var(--dsw-alias-label-tertiary);fill:none;stroke-width:1.6;stroke-linecap:round;pointer-events:none}',
-      '.tw-search{box-sizing:border-box;width:100%;font:inherit;font-size:13px;line-height:20px;padding:5px 10px 5px 30px;border-radius:var(--dsw-radius-sm,8px);border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary)}',
+      '.tw-searchIcon{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;stroke:var(--dsw-alias-label-tertiary);fill:none;stroke-width:1.6;stroke-linecap:round;pointer-events:none}',
+      '.tw-search{box-sizing:border-box;width:100%;height:34px;font:inherit;font-size:13px;line-height:20px;padding:0 10px 0 30px;border-radius:var(--dsw-radius-sm,8px);border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary)}',
       '.tw-search::placeholder{color:var(--dsw-alias-label-tertiary)}',
       '.tw-search:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}',
-      '.tw-actions{display:flex;align-items:center;gap:6px;flex:none}',
+      '.tw-actions{display:flex;align-items:center;gap:8px;flex:none}',
 
       /* ── 摘要 ── */
       '.tw-summary{margin:10px 0 0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;font-variant-numeric:tabular-nums}',
@@ -114,8 +114,8 @@ window.__ModuleLoader__.load({
       '.tw-detailActions{display:flex;align-items:center;gap:10px}',
       '.tw-dirty{font-size:11px;line-height:13px;color:var(--dsw-alias-state-warn-primary)}',
 
-      /* ── 按钮 ── */
-      '.tw-btn{font:inherit;font-size:13px;line-height:20px;padding:4px 12px;border-radius:var(--dsw-radius-sm);border:1px solid var(--dsw-alias-border-l2);background:none;color:var(--dsw-alias-label-primary);cursor:pointer;transition:background 150ms ease;white-space:nowrap}',
+      /* ── 按钮：与搜索框同高 34px，内容垂直居中 ── */
+      '.tw-btn{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;height:34px;font:inherit;font-size:13px;line-height:20px;padding:0 14px;border-radius:var(--dsw-radius-sm);border:1px solid var(--dsw-alias-border-l2);background:none;color:var(--dsw-alias-label-primary);cursor:pointer;transition:background 150ms ease;white-space:nowrap}',
       '.tw-btn:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}',
       '.tw-btn[data-kind=danger]{color:var(--dsw-alias-state-error-primary);border-color:currentColor}',
       '.tw-btn:disabled{color:var(--dsw-alias-label-tertiary);border-color:var(--dsw-alias-border-l2);background:none;cursor:default}',

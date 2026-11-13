@@ -317,6 +317,32 @@ test('ui: 工具栏有搜索、全部折叠、刷新', () => {
   assert.ok(html.includes('刷新'));
 });
 
+test('ui: 搜索框与按钮同高，且垂直居中', () => {
+  const { mod } = loadUi();
+  const css = mod.__testing.CSS;
+
+  // 三者必须定同一个高度，否则一高一矮看着就是歪的
+  const search = css.match(/\.tw-search\{([^}]*)\}/)[1];
+  const btn = css.match(/\.tw-btn\{([^}]*)\}/)[1];
+  const hSearch = search.match(/height:(\d+)px/);
+  const hBtn = btn.match(/height:(\d+)px/);
+  assert.ok(hSearch !== null, '搜索框要定高');
+  assert.ok(hBtn !== null, '按钮要定高');
+  assert.equal(hSearch[1], hBtn[1], '搜索框与按钮必须等高');
+
+  // 按钮内部要垂直居中
+  assert.ok(/display:inline-flex/.test(btn), '按钮用 inline-flex');
+  assert.ok(/align-items:center/.test(btn), '按钮内容垂直居中');
+  assert.ok(/justify-content:center/.test(btn), '按钮内容水平居中');
+
+  // 工具栏容器也居中对齐
+  assert.ok(/\.tw-toolbar\{[^}]*align-items:center/.test(css));
+
+  // 搜索图标用 top:50% + translateY 垂直居中，不用写死像素
+  assert.ok(/\.tw-searchIcon\{[^}]*top:50%/.test(css), '图标应垂直居中');
+  assert.ok(/\.tw-searchIcon\{[^}]*translateY\(-50%\)/.test(css));
+});
+
 test('ui: 补丁未装时显示提示且胶囊变红', () => {
   const data = makeData({ patched: false, reason: 'tools service unavailable' });
   const html = renderView(data);
