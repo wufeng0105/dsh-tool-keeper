@@ -3,9 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "TODO: 一句话说清这个插件做什么、给谁用",
+  "description": "Toolwarden 工具守卫 — 决定哪些工具进入模型上下文，并能重写工具说明文字。",
   "exports": { ".": "./index.js" },
-  "files": ["index.js", "cordis.patch.yml"],
+  "files": ["index.js", "rules.js", "cordis.patch.yml", "README.md"],
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
-  "engines": { "node": ">=20.3.0", "dsh": ">=0.2.1-rc.1 <0.3.0-0" }
+  "engines": { "node": ">=20.3.0", "dsh": ">=0.2.2-rc.2 <0.3.0-0" },
+  "scripts": {
+    "test": "node --test tests/rules.test.js"
+  }
 }

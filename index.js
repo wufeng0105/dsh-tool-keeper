@@ -1,27 +1,320 @@
 /**
  * dsh-toolwarden —— Host 半。
  *
- * 骨架阶段：只证明这个包能被宿主加载。功能定了再在 apply 里注册。
+ * 职责：在工具注册入口拦截，按规则决定「丢弃 / 改写 / 放行」。
  *
- * 三条硬规矩（都踩过，写错会让 DSH 起不来）：
+ * ## 为什么要拦截 register（论证见 REQUIREMENTS.md D1.0）
  *
- * 1. `inject` 里只能写宿主确实存在的服务名。写错或写了不存在的服务，
- *    插件会永远 `pending`，而宿主把「有 entry 未激活」当成 web boot 失败——
- *    整个页面加载不出来。不确定就保持空数组。
- * 2. 不要导出 `Config = {}`。要配置就用 schemastery 的 `Schema.object(...)`；
- *    不需要就干脆不导出。普通对象会让 activate 崩在
- *    `Cannot read properties of undefined (reading 'validate')`。
- * 3. 所有资源注册包在 `ctx.effect(() => { ... return cleanup })` 里。
+ * - MCP 工具与内置工具走**同一个入口**：`dsh-mcp-client/src/tools.ts:177`
+ *   `ctx.tools.register(definition)`
+ * - `description` 在**构造 definition 时**就已固定：`tools.ts:145-149, 257-260`
+ * - 模型看到的 schema 从注册的 definition 投影：`dsh-tools/src/schema.ts:641-646`
  *
- * @module dsh-toolwarden
+ * 所以：模型可见文本 = 注册时存入的字段。`restrict()` 只影响「哪些可见」，
+ * 不改字段内容（`practices.md:10`）。改写必须在注册期。
+ *
+ * ## 三条硬约束
+ *
+ * 1. **绝不中断注册链**（R4.5）。任何本插件自身的错误都必须被吞掉并记为诊断，
+ *    然后**原样放行**。一个坏配置不能让工具注册失败。
+ * 2. **失败必须可见**（D6）。补丁装不上时要报出来，不能静默失效——
+ *    `tool-mask` 就是静默失效的典型。
+ * 3. **冷启动即生效**（R4.1）。补丁装在 `apply` 期间，早于任何 MCP 连接。
+ *
+ * @module @local/dsh-toolwarden
  */
+
+import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
+import {
+  normalizeConfig, applyToDefinition, diagnose, splitMcpName, PROTECTED_TOOLS,
+} from './rules.js';
 
 export const name = 'dsh-toolwarden';
 
-/** 需要宿主服务时才往这里加。不需要就留空。 */
-export const inject = [];
+/** `tools` 是硬依赖：没有它就无法拦截。`agents` 用不到，不加。 */
+export const inject = ['tools'];
 
+/**
+ * cordis 的 traceable 代理把真实目标存在这个 symbol 下。
+ * 已核实存在于 0.2.2-rc.2 的 `cordis/src/utils.ts`。
+ */
+const ORIGINAL = Symbol.for('cordis.original');
+
+/** 配置文件位置。可用 configPath 覆盖（测试用）。 */
+function configPath(config) {
+  if (typeof config?.configPath === 'string' && config.configPath !== '') return config.configPath;
+  const home = process.env.DSH_HOME || join(homedir(), '.dsh');
+  return join(home, 'toolwarden.json');
+}
+
+/** 读配置。任何失败都退化为空配置（全放行），并返回原因。 */
+function readConfig(path) {
+  let text;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { raw: undefined, error: undefined };
+    return { raw: undefined, error: `cannot read ${path}: ${String(error?.message ?? error)}` };
+  }
+  try {
+    return { raw: JSON.parse(text), error: undefined };
+  } catch (error) {
+    // 半截 JSON / 手改写坏：按空配置运行，绝不中断注册（R4.5）
+    return { raw: undefined, error: `invalid JSON in ${path}: ${String(error?.message ?? error)}` };
+  }
+}
+
+/** 原子写配置：临时文件 + rename，避免崩溃留下半截文件。 */
+export function writeConfigFile(path, data) {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = path + '.tmp-' + process.pid + '-' + Math.random().toString(36).slice(2, 8);
+  writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n', 'utf8');
+  try {
+    renameSync(tmp, path);
+  } catch (error) {
+    // Windows 上目标被占用时 rename 会失败；退化为直接写
+    if (!['EPERM', 'EEXIST', 'EACCES'].includes(error?.code ?? '')) throw error;
+    writeFileSync(path, JSON.stringify(data, null, 2) + '\n', 'utf8');
+  }
+}
+
+/** 从 profile 的 cordis.patch.yml 读 mcp-manager.servers 的键名（用于诊断）。 */
+function readKnownServers(config) {
+  const explicit = config?.knownServers;
+  if (Array.isArray(explicit)) return new Set(explicit.filter(s => typeof s === 'string'));
+
+  const home = process.env.DSH_HOME || join(homedir(), '.dsh');
+  const profile = process.env.DSH_PROFILE || 'desktop';
+  const patchPath = join(home, 'profiles', profile, 'cordis.patch.yml');
+
+  let text;
+  try {
+    text = readFileSync(patchPath, 'utf8');
+  } catch {
+    return undefined; // 读不到就不做「未知服务器」判定，宁可放过
+  }
+
+  // 极简 YAML 提取：只找 mcp-manager 段下的 servers 子键。
+  // 不引入 yaml 依赖，因为这一信息只用于诊断提示，不影响过滤正确性。
+  const lines = text.split(/\r?\n/);
+  const servers = new Set();
+  let inMcpManager = false;
+  let inServers = false;
+  let serversIndent = -1;
+  for (const line of lines) {
+    const trimmed = line.trimEnd();
+    if (trimmed === '' || trimmed.trimStart().startsWith('#')) continue;
+    const indent = trimmed.length - trimmed.trimStart().length;
+
+    if (/^-\s+id:\s*mcp-manager\s*$/.test(trimmed.trim())) {
+      inMcpManager = true;
+      inServers = false;
+      continue;
+    }
+    if (inMcpManager && /^-\s+id:/.test(trimmed.trim())) {
+      inMcpManager = false; // 下一个顶层条目，退出
+      inServers = false;
+      continue;
+    }
+    if (!inMcpManager) continue;
+
+    if (/^servers:\s*$/.test(trimmed.trim())) {
+      inServers = true;
+      serversIndent = indent;
+      continue;
+    }
+    if (inServers) {
+      if (indent <= serversIndent) {
+        inServers = false;
+        continue;
+      }
+      // servers 下一层的键：`      context7:`
+      if (indent === serversIndent + 2 && /^([A-Za-z0-9_-]+):\s*$/.test(trimmed.trim())) {
+        servers.add(trimmed.trim().slice(0, -1));
+      }
+    }
+  }
+  return servers.size > 0 ? servers : undefined;
+}
+
+/**
+ * 插件入口。
+ * @param ctx - Cordis 上下文，`ctx.tools` 由 inject 保证
+ * @param config - `{ enabled?, configPath?, knownServers? }`；不导出 Config 以免触发 validate 缺陷
+ */
 export function apply(ctx, config) {
-  const sink = typeof ctx.logger?.info === 'function' ? ctx.logger.info.bind(ctx.logger) : undefined;
-  if (sink !== undefined) sink('[dsh-toolwarden] loaded');
+  const settings = config !== null && typeof config === 'object' ? config : {};
+  const log = makeLogger(ctx);
+
+  // R4.4 总开关
+  if (settings.enabled === false) {
+    log.info('disabled by config; no tool is filtered');
+    return;
+  }
+
+  const path = configPath(settings);
+  const { raw, error: readError } = readConfig(path);
+  const { rules, problems } = normalizeConfig(raw);
+
+  if (readError !== undefined) {
+    // R4.5：配置坏了按全放行跑，但必须报出来
+    log.warn(readError + ' — running with an empty config (no tool filtered)');
+  }
+  for (const problem of problems) log.warn('config: ' + problem);
+
+  const knownServers = readKnownServers(settings);
+  const seen = new Set();
+  const stats = { total: 0, dropped: 0, rewritten: 0, kept: 0 };
+
+  /** 装补丁。返回 { patched, restore, reason } */
+  const patch = installPatch(ctx, rules, knownServers, seen, stats, log);
+
+  if (!patch.patched) {
+    log.warn('could not install the registration patch: ' + patch.reason);
+    // D6：失败可见。通过一个自注册的诊断服务暴露给界面/其他消费者
+    provideStatus(ctx, () => ({
+      patched: false,
+      reason: patch.reason,
+      stats: { ...stats },
+      problems: [...problems, readError].filter(Boolean),
+      diagnostics: [],
+      configPath: path,
+    }));
+    return;
+  }
+
+  // 定期把诊断算出来（首次注册后即可）
+  const computeDiagnostics = () => {
+    try {
+      return diagnose(rules, [...seen], knownServers ?? new Set());
+    } catch (error) {
+      log.warn('diagnose failed: ' + String(error?.message ?? error));
+      return [];
+    }
+  };
+
+  provideStatus(ctx, () => ({
+    patched: true,
+    reason: undefined,
+    stats: { ...stats },
+    problems: [...problems, readError].filter(Boolean),
+    diagnostics: computeDiagnostics(),
+    configPath: path,
+  }));
+
+  ctx.effect(() => () => {
+    patch.restore();
+  }, 'toolwarden: restore register');
+
+  log.info(
+    `patched; config=${path}${knownServers ? '; servers=' + [...knownServers].join(',') : '; servers=unknown'}`
+  );
+}
+
+/** 装 register 补丁。任何异常都返回 patched:false 而不是抛出。 */
+function installPatch(ctx, rules, knownServers, seen, stats, log) {
+  let underlying;
+  let original;
+  let hadOwn;
+  try {
+    const view = ctx.get('tools') ?? ctx.tools;
+    if (view === undefined || view === null) {
+      return { patched: false, reason: 'tools service unavailable', restore: () => {} };
+    }
+    underlying = Reflect.get(view, ORIGINAL) ?? view;
+    original = underlying.register;
+    if (typeof original !== 'function') {
+      return { patched: false, reason: 'tools.register is not a function', restore: () => {} };
+    }
+    hadOwn = Object.hasOwn(underlying, 'register');
+  } catch (error) {
+    return { patched: false, reason: 'cannot reach the tools service: ' + String(error?.message ?? error), restore: () => {} };
+  }
+
+  const wrapped = function register(definition, options) {
+    stats.total += 1;
+    let verdict;
+    try {
+      const nm = definition === null || definition === undefined ? undefined : definition.name;
+      if (typeof nm === 'string' && nm !== '') seen.add(nm);
+      verdict = applyToDefinition(definition, rules, knownServers);
+    } catch (error) {
+      // 自己的判定出错时绝不阻断注册（R4.5）
+      log.warn('decision failed, passing the tool through unchanged: ' + String(error?.message ?? error));
+      return original.call(this, definition, options);
+    }
+    if (verdict.drop) {
+      stats.dropped += 1;
+      // 不注册：返回一个无害的 disposer，因为调用方会在下一轮同步时调用它
+      return () => {};
+    }
+    if (verdict.definition !== definition) {
+      stats.rewritten += 1;
+    } else {
+      stats.kept += 1;
+    }
+    return original.call(this, verdict.definition, options);
+  };
+
+  let installed = false;
+  try {
+    Reflect.set(underlying, 'register', wrapped);
+    installed = underlying.register === wrapped;
+  } catch (error) {
+    return { patched: false, reason: 'Reflect.set failed: ' + String(error?.message ?? error), restore: () => {} };
+  }
+  if (!installed) {
+    return { patched: false, reason: 'patch did not take effect (frozen or proxied service)', restore: () => {} };
+  }
+
+  return {
+    patched: true,
+    reason: undefined,
+    restore: () => {
+      try {
+        if (hadOwn) Reflect.set(underlying, 'register', original);
+        else Reflect.deleteProperty(underlying, 'register');
+      } catch (error) {
+        log.warn('could not restore tools.register: ' + String(error?.message ?? error));
+      }
+    },
+  };
+}
+
+/** 用可选服务把状态暴露出去，供界面或诊断读取。缺服务时静默跳过。 */
+function provideStatus(ctx, getter) {
+  try {
+    if (typeof ctx.provide === 'function') {
+      ctx.provide('toolwarden', { status: getter, PROTECTED_TOOLS });
+    }
+  } catch {
+    // provide 失败不影响过滤本身
+  }
+}
+
+/** 统一的日志出口；拿不到 logger 就退回 console。 */
+function makeLogger(ctx) {
+  const emit = (level, message) => {
+    const line = '[toolwarden] ' + message;
+    try {
+      const logger = typeof ctx.get === 'function' ? ctx.get('logger') : undefined;
+      if (logger && typeof logger[level] === 'function') {
+        logger[level](line);
+        return;
+      }
+    } catch {
+      // 继续退回 console
+    }
+    try {
+      console[level === 'info' ? 'log' : 'warn'](line);
+    } catch {
+      // 极简宿主连 console 都没有
+    }
+  };
+  return {
+    info: m => emit('info', m),
+    warn: m => emit('warn', m),
+  };
 }
