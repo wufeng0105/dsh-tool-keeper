@@ -36,6 +36,32 @@
 
 ---
 
+## 设置页
+
+设置 → **工具守卫**。按来源分组，每组可折叠，组头显示工具数与 token 开销。
+
+| 位置 | 用途 |
+|---|---|
+| 工具栏 | 搜索（按工具名或服务器名过滤）、全部折叠、刷新 |
+| 摘要 | 当前屏幕上的工具数与 token 合计；搜索时显示「筛选出 N 个（全部 M 个）」 |
+| 分组行 | 图标 + 工具名 + 字符数/token 数 + 开关 |
+| 点工具名 | 展开编辑：左边服务器原文（只读），右边改写框，两栏等高 |
+| 行内标记 | 「已改写」= 说明被改过；「服务器规则关闭」= 该行状态由服务器级规则决定 |
+| 底部 | 恢复出厂（危险操作，独立分区） |
+
+**受保护的工具有标记但不显示开关** —— 画一个必然点不动的开关是骗人。
+
+开关状态来自引擎判定，不是页面自己推断的：配置里如果写了服务器白名单或服务器总开关，
+页面会显示真实结果，不会把引擎已经丢掉的工具显示成「开」。
+
+改造前后对比（实测）：
+
+```
+设置页 105 个工具 / 4 组 / ≈35,603 tokens
+```
+
+---
+
 ## 用对话管理
 
 不用手改 JSON，直接跟模型说。模型会调 `toolwarden` 工具：
@@ -96,8 +122,10 @@
 冲突时**最具体者胜**：
 
 ```
-单工具规则  >  服务器白名单  >  服务器总开关
+受保护  >  单工具规则  >  服务器白名单  >  服务器总开关
 ```
+
+设置页显示的状态就是这条判定链的结果，不是页面自己的推断。
 
 ### 保护名单
 
@@ -114,7 +142,7 @@ present  todo_write  ask_user_question  toolwarden  skill
 
 ## 实测效果
 
-以下数据来自实装测试（配置是我为验证写的，不是出厂值）：
+以下数据来自实装测试（配置是为验证写的，不是出厂值）：
 
 | 项 | 改前 | 改后 |
 |---|---|---|
@@ -141,6 +169,7 @@ present  todo_write  ask_user_question  toolwarden  skill
 | 插件自身出错 | 原样放行该工具，不阻断注册 |
 | 卸载插件 | 恢复服务器原样 |
 | 补丁装不上 | 显式报 `patched: false`，不静默失效 |
+| 设置页 API 跨源调用 | 403 拒绝；只接受同源 |
 
 ---
 
@@ -148,8 +177,9 @@ present  todo_write  ask_user_question  toolwarden  skill
 
 | 限制 | 说明 |
 |---|---|
-| 改配置需重启 | 工具在注册期拦截，已注册的不自动更新。**即时生效需另加 `restrict()` 路径**（未实现） |
-| 无界面 | 目前靠 `toolwarden` 工具或手改 JSON。设置页是下一期 |
+| 改配置需重启 | 工具在注册期拦截，已注册的不自动更新。即时生效需另加 `restrict()` 路径，**未实现** |
+| 设置页不能改参数说明 | 参数级改写（`rewrite.<tool>.properties`）模型工具与配置支持，页面只编辑工具级说明 |
+| 恢复出厂无二次确认 | 一次点击即清空全部规则；API 会留 `.bak-<时间戳>` 备份，但页面不提示备份位置 |
 | 不改结构 | 有意为之：结构改错会让工具直接报错，文本改错只是说明不准 |
 | 出厂零配置 | 有意为之：不替用户做决定。装完节省为 0，需自己关 |
 
@@ -159,17 +189,24 @@ present  todo_write  ask_user_question  toolwarden  skill
 
 | 文件 | 内容 |
 |---|---|
-| [REQUIREMENTS.md](./REQUIREMENTS.md) | 需求、技术决策、验收标准 |
-| [VERIFICATION-P4.md](./VERIFICATION-P4.md) | 运行时验证记录（含未验证项） |
-| [WORKING-AGREEMENT.md](./WORKING-AGREEMENT.md) | 阶段模型、授权边界、证据分级 |
+| [docs/REQUIREMENTS.md](./docs/REQUIREMENTS.md) | 需求、技术决策、验收标准 |
+| [docs/UI-AUDIT.md](./docs/UI-AUDIT.md) | 前端审计记录（累积状态问题与修法） |
+| [docs/VERIFICATION-P4.md](./docs/VERIFICATION-P4.md) | 运行时验证记录（含未验证项） |
+| [docs/WORKING-AGREEMENT.md](./docs/WORKING-AGREEMENT.md) | 阶段模型、授权边界、证据分级 |
+| [CHANGELOG.md](./CHANGELOG.md) | 版本变更 |
 
 ---
 
 ## 开发
 
 ```bash
-npm test    # 66 条测试
+npm install   # 只有测试需要（react + react-dom 用于离线渲染校验）
+npm test      # 138 条测试
 node <plugin-kit>/skills/plugin-kit/scripts/preflight.mjs .
 ```
 
+`node_modules` 只是测试用的 `react` / `react-dom`，不进 `files`、不进 git。
+插件运行时不依赖它——浏览器半的 `react` 由宿主的 `__ModuleLoader__` 提供。
+
 **测试纪律**：每个断言型检查都做过变异测试——故意改坏实现，确认测试会红。
+审计报告里只认变异结果，不认「测试通过」这句话本身。

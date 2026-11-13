@@ -1,12 +1,30 @@
 {
   "name": "@local/dsh-toolwarden",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": true,
   "type": "module",
-  "description": "Toolwarden 工具守卫 — 决定哪些工具进入模型上下文，并能重写工具与参数说明。",
-  "exports": {
-    ".": "./index.js"
+  "description": "决定哪些工具进入模型上下文，并能重写工具与参数的说明文字。",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wufeng0105/dsh-toolwarden.git"
   },
+  "homepage": "https://github.com/wufeng0105/dsh-toolwarden#readme",
+  "bugs": {
+    "url": "https://github.com/wufeng0105/dsh-toolwarden/issues"
+  },
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cordis",
+    "bundle",
+    "mcp",
+    "context",
+    "tools"
+  ],
+  "icon": "icon.svg",
+  "exports": { ".": "./index.js" },
   "files": [
     "index.js",
     "rules.js",
@@ -15,17 +33,13 @@
     "api.js",
     "ui",
     "cordis.patch.yml",
-    "README.md"
+    "icon.svg",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
-  "dsh": {
-    "bundle": {
-      "patch": "./cordis.patch.yml"
-    }
-  },
-  "engines": {
-    "node": ">=20.3.0",
-    "dsh": ">=0.2.2-rc.2 <0.3.0-0"
-  },
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "engines": { "node": ">=20.3.0", "dsh": ">=0.2.2-rc.2 <0.3.0-0" },
   "scripts": {
     "test": "node --test tests/rules.test.js tests/tool.test.js tests/api.test.js tests/ui.test.js"
   },

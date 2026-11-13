@@ -1,0 +1,12 @@
+# 每检出都保持 LF，避免 core.autocrlf 让工作区字节与仓库 blob 不一致。
+# package.json / cordis.patch.yml 会被宿主与包管理器逐字读取，字节不一致会难查。
+* text=auto eol=lf
+
+# Windows 脚本按 CRLF 更稳。
+*.ps1 text eol=crlf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
