@@ -3,7 +3,7 @@
  *
  * 职责：在工具注册入口拦截，按规则决定「丢弃 / 改写 / 放行」。
  *
- * ## 为什么要拦截 register（论证见 REQUIREMENTS.md D1.0）
+ * ## 为什么要拦截 register（论证见 docs/DESIGN.md 第一节）
  *
  * - MCP 工具与内置工具走**同一个入口**：`dsh-mcp-client/src/tools.ts:177`
  *   `ctx.tools.register(definition)`
@@ -313,12 +313,14 @@ function installPatch(ctx, rules, knownServers, seen, catalog, missingParams, lo
       // 不注册：返回一个无害的 disposer，因为调用方会在下一轮同步时调用它
       return () => {};
     }
-    if (verdict.definition !== definition) {
-      if (verdict.missingParams !== undefined) {
-        const nm = definition === null || definition === undefined ? undefined : definition.name;
-        if (typeof nm === 'string') {
-          missingParams.set(nm, verdict.missingParams);
-        }
+    // 参数名没命中也要记录诊断，不能只在 definition 真的被改过时才记。
+    // 反例：rewrite 只配了 properties 且参数名全部不存在 → definition 原样返回，
+    // 若把记录放在 `definition !== definition` 里，missingParams 就永远丢失，
+    // 用户看到的是一个「看起来生效了、其实一个字都没改」的改写。
+    if (verdict.missingParams !== undefined && verdict.missingParams.length > 0) {
+      const nm = definition === null || definition === undefined ? undefined : definition.name;
+      if (typeof nm === 'string' && nm !== '') {
+        missingParams.set(nm, verdict.missingParams);
       }
     }
     return original.call(this, verdict.definition, options);

@@ -16,7 +16,7 @@
  * - `rewrite`—— 注册，但 description 换成用户写的文本。
  * - `keep`   —— 原样放行。
  *
- * ## 优先级（REQUIREMENTS.md M5）
+ * ## 优先级（见 docs/DESIGN.md「优先级与归一化」）
  *
  *   单工具规则  >  服务器白名单  >  服务器总开关
  *
@@ -63,7 +63,7 @@ export function isProtected(name) {
 
 /**
  * 归一化配置。非法输入不抛异常 —— 按最宽松解释处理并记入 problems，
- * 因为一个坏配置绝不能中断工具注册链（REQUIREMENTS R4.5）。
+ * 因为一个坏配置绝不能中断工具注册链（docs/DESIGN.md 的 R4）。
  *
  * @param raw - 来自 tool-keeper.json 的原始对象
  * @returns {{ rules: object, problems: string[] }} 归一化后的规则与问题清单
@@ -222,7 +222,17 @@ function describe(value) {
  * 结果「报成功但什么也没写」；`tools.__proto__ = 'drop'` 会落盘成一个看着正常
  * 却永远不生效的条目。两种都是谎报，所以在解析阶段直接拒绝。
  */
-const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+/**
+ * 原型链上的危险键。
+ *
+ * 允许它们当配置键有两个后果：`servers.__proto__ = {...}` 会走到原型 setter，
+ * 结果「报成功但什么也没写」；`tools.__proto__ = 'drop'` 会落盘成一个看着正常
+ * 却永远不生效的条目。两种都是谎报，所以在解析阶段直接拒绝。
+ *
+ * 导出是为了让 tool.js 在入口处也能挡住 —— 它构造配置时用的是普通对象赋值，
+ * 字面量里的 `__proto__` 不是自有属性，normalizeConfig 看不到。
+ */
+export const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
 function isDangerousKey(key) {
   return DANGEROUS_KEYS.has(key);
@@ -443,7 +453,7 @@ function safeLength(value) {
 
 /**
  * 诊断：找出配置里那些「写了但从没匹配到任何工具」的条目。
- * 静默失效的过滤器比没有过滤器更坏（REQUIREMENTS R3.5/A8）。
+ * 静默失效的过滤器比没有过滤器更坏（见 docs/KNOWN-ISSUES.md 前两条）。
  *
  * @param rules - 归一化后的规则
  * @param seenNames - 本次运行中实际见过的工具名
@@ -455,7 +465,7 @@ export function diagnose(rules, seenNames, knownServers) {
   const seen = new Set(seenNames || []);
   const servers = new Set(knownServers || []);
 
-  // 三态判定（REQUIREMENTS A8）
+  // 三态判定（见 docs/DESIGN.md「A8 的三态」）
   const configuredServers = new Set([
     ...rules.disabledServers,
     ...rules.serverKeep.keys(),

@@ -300,3 +300,45 @@ test('baseline: 空配置解析后不隐藏任何工具', () => {
   assert.equal(rules.toolOverrides.size, 0);
   assert.equal(rules.rewrites.size, 0);
 });
+// ─────────────────────────────────────────────
+// 写前校验：模型工具这条路径原来完全不校验
+// ─────────────────────────────────────────────
+test('tool: 非法输入不会落盘', async () => {
+  const { definition, configPath, dir } = setup();
+  // 先做一次合法写入，让配置文件存在，后面才能比对「一个字都没变」
+  await definition.execute({ action: 'enable', value: true });
+  const before = readFileSync(configPath, 'utf8');
+
+  // text 不是字符串：由参数校验直接挡住（比写前校验更早一层）
+  await assert.rejects(
+    () => definition.execute({ action: 'rewrite', name: 'read', target: 'description', text: 12345 }),
+    '非字符串 text 必须被拒绝',
+  );
+
+  // 配置文件一个字节都不该变
+  assert.equal(readFileSync(configPath, 'utf8'), before, '拒绝后配置不能变');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('tool: 危险键写入被拒绝', async () => {
+  const { definition, configPath, dir } = setup();
+  await definition.execute({ action: 'enable', value: true });
+  const before = readFileSync(configPath, 'utf8');
+
+  await assert.rejects(
+    () => definition.execute({ action: 'server', server: '__proto__', keep: ['x'] }),
+    (error) => error.code === 'EINVALID',
+    '原型链键必须被拒绝',
+  );
+  assert.equal(readFileSync(configPath, 'utf8'), before);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('tool: 正常写入仍然成功', async () => {
+  const { definition, configPath, dir } = setup();
+  const r = await definition.execute({ action: 'server', server: 'tinyfish', keep: ['search'] });
+  assert.equal(r.ok, true);
+  const saved = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.deepEqual(saved.servers.tinyfish.keep, ['search']);
+  rmSync(dir, { recursive: true, force: true });
+});

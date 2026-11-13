@@ -119,11 +119,25 @@ ctx.inject(['webServer'], (inner) => {
 | 事实 | 结论 |
 |---|---|
 | `package.json` 里怎么声明 | `dsh.bundle.patch` 指向 patch 文件 |
-| patch 的 entry `name` | 必须与包名逐字一致，否则装完解析不到 |
 | `index.js` 要导出什么 | `name`、`inject`、`apply` |
 | `Config` 能导出普通对象吗 | **不能**。会报 `Cannot read properties of undefined (reading 'validate')` |
 | 想用配置怎么办 | 用 schemastery 的 `Schema.object(...)`，或者干脆不导出 Config，自己读独立配置文件（本项目选了后者） |
 | 两个插件间的关系 | 所有插件共享同一个 Cordis 容器与作用域树 |
+
+### patch 里 `name` 有两种写法，规则不同
+
+这一点容易搞错，本项目两行都用到了：
+
+| 用途 | patch 里的 `name` | 解析规则 |
+|---|---|---|
+| 宿主半（`index.js`） | 包名 `@local/dsh-tool-keeper` | **必须与 `package.json` 的 `name` 逐字一致** |
+| 浏览器半（`ui/`） | 相对路径 `./ui/index.js` | 相对**本包目录**解析，指向一个**自己的 `package.json`** |
+
+浏览器半之所以要独立成一个包（`ui/package.json` 声明 `dsh.client.platform: "web"` + `exports["./client"]`），
+是因为宿主的浏览器半发现机制只认「包的精确包名」或「路径里最近的 `package.json`」——
+裸子路径会被当成非包直接跳过。
+
+所以「entry name 必须等于包名」只对宿主半那一行成立，**浏览器半那行写的是路径**。
 
 ---
 

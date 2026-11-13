@@ -149,7 +149,7 @@ Invoke-WebRequest -Uri "http://127.0.0.1:<端口>/tool-keeper/api" -Method Post 
 
 为了能喂数据，组件拆成了两层：
 
-- `ToolwardenView` —— 纯展示，给 data 就出 HTML，不取数
+- `ToolKeeperView` —— 纯展示，给 data 就出 HTML，不取数
 - `Section` —— 容器，负责 fetch、loading、错误、展开状态
 
 ### 真机看

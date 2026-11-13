@@ -238,6 +238,63 @@ test('index: 补丁装不上时设置页 API 仍然挂载', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+// ─────────────────────────────────────────────
+// 参数名没命中时的诊断（审计发现：全未命中会被静默吞掉）
+//
+// 注意：这些用例必须用**内置工具名**（不带 mcp__ 前缀），
+// 因为 MCP 工具会先过「未知服务器一律放行」那一关，
+// 测试环境里 readKnownServers 读不到假的服务器名，规则根本不会走到 rewrite 分支。
+// ─────────────────────────────────────────────
+test('index: rewrite 只配参数且参数名全部不存在时，诊断必须报出来', () => {
+  const { dir, configPath } = makeDir({
+    enabled: true,
+    servers: {},
+    tools: {},
+    rewrite: {
+      // 只配 properties，且两个参数名都不存在 → definition 原样返回
+      'create_goal': { properties: { nope1: 'A', nope2: 'B' } },
+    },
+  });
+  const { ctx, state } = makeCtx();
+  apply(ctx, { configPath });
+
+  ctx.tools.register({
+    name: 'create_goal',
+    description: '原说明',
+    parameters: { type: 'object', properties: { real: { type: 'string' } } },
+  });
+
+  const status = readStatus(state);
+  const diags = status.diagnostics.map(d => d.target + ' ' + d.message).join(' | ');
+
+  // 关键断言：即使 definition 一个字都没改，也必须报「参数不存在」
+  assert.ok(/nope1/.test(diags), '未命中的参数名必须出现在诊断里，实际：' + (diags || '(空)'));
+  assert.ok(/nope2/.test(diags), 'nope2 也要报');
+});
+
+test('index: 参数部分命中时，命中的不算错、未命中的报错', () => {
+  const { dir, configPath } = makeDir({
+    enabled: true,
+    servers: {},
+    tools: {},
+    rewrite: {
+      'create_goal': { properties: { real: '新说明', nope: 'A' } },
+    },
+  });
+  const { ctx, state } = makeCtx();
+  apply(ctx, { configPath });
+
+  ctx.tools.register({
+    name: 'create_goal',
+    description: '原说明',
+    parameters: { type: 'object', properties: { real: { type: 'string' } } },
+  });
+
+  const diags = readStatus(state).diagnostics.map(d => d.target).join(' | ');
+  assert.ok(/nope/.test(diags), '未命中的要报，实际：' + (diags || '(空)'));
+  assert.ok(!/\.real\b/.test(diags), '命中的不该报错');
+});
+
 test('index: 服务被冻结时如实报 patched:false，不假装装上了', () => {
   const { dir, configPath } = makeDir({ enabled: true, servers: {}, tools: {}, rewrite: {} });
   const { ctx, state } = makeCtx();

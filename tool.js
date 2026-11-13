@@ -20,7 +20,7 @@
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { normalizeConfig, diagnose, splitMcpName, PROTECTED_TOOLS } from './rules.js';
+import { normalizeConfig, PROTECTED_TOOLS, DANGEROUS_KEYS } from './rules.js';
 import { createBaselineConfig } from './baseline.js';
 
 const TOOL_NAME = 'tool_keeper';
@@ -44,10 +44,32 @@ function loadOrBaseline(path) {
 /**
  * 原子写回。审计指出原实现里 writeConfigFile 是死代码且 Windows 回退不原子，
  * 这里改成：先写临时文件并 fsync 语义下的 rename，失败才退化。
+ *
+ * **写前校验**：模型工具这条路径原来完全不校验，能写出 API 会拒绝的配置
+ * （`api.js` 的 `set` 有写前校验，`tool.js` 没有 —— 两条入口行为不一致）。
+ * 现在统一：`normalizeConfig` 报出问题时拒绝落盘，把问题原样抛给调用方。
+ *
  * @param {string} path
  * @param {object} data
+ * @throws 配置有问题时抛出，且不写盘
  */
 function saveConfig(path, data) {
+  // 危险键检查必须走 JSON 往返：对象字面量里的 `__proto__` 不走自有属性，
+  // `Object.entries` 看不见它，normalizeConfig 也就报不出来。
+  // 而磁盘上的配置本来就是 JSON 文本，序列化再解析正好还原真实形态。
+  let roundTripped;
+  try {
+    roundTripped = JSON.parse(JSON.stringify(data));
+  } catch {
+    roundTripped = data;
+  }
+  const { problems } = normalizeConfig(roundTripped);
+  if (problems.length > 0) {
+    const error = new Error('配置有问题，未保存：' + problems.join('；'));
+    error.code = 'EINVALID';
+    error.problems = problems;
+    throw error;
+  }
   mkdirSync(dirname(path), { recursive: true });
   const text = JSON.stringify(data, null, 2) + '\n';
   const tmp = path + '.tmp-' + process.pid + '-' + Math.random().toString(36).slice(2, 8);
@@ -197,6 +219,14 @@ export function registerTool(ctx, options) {
       if (action === 'server') {
         const server = typeof args.server === 'string' ? args.server.trim() : '';
         if (server === '') throw new Error('action=server 需要 server');
+        // 危险键必须在这里挡住：`servers['__proto__'] = {...}` 走的是原型 setter，
+        // 赋值静默失败，JSON 序列化出来是空的 —— 会变成「返回 ok: true 但什么都没写」。
+        // 写前校验查不到它，因为字面量对象的 __proto__ 不是自有属性。
+        if (DANGEROUS_KEYS.has(server)) {
+          const error = new Error(`${server} 不能作为服务器名`);
+          error.code = 'EINVALID';
+          throw error;
+        }
         if (!Array.isArray(args.keep)) {
           // 省略 keep = 该服务器全部保留（删掉规则）
           delete base.servers[server];
