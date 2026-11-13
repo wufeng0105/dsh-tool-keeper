@@ -456,3 +456,118 @@ test('api: handler 内部异常返回 500 而不是崩掉', async () => {
   dispose();
   rmSync(dir, { recursive: true, force: true });
 });
+// ─────────────────────────────────────────────
+// op = export / import
+// ─────────────────────────────────────────────
+test('api: export 返回磁盘上的完整配置', async () => {
+  const { captured, configPath, dir, dispose } = setup();
+  writeFileSync(configPath, JSON.stringify({
+    enabled: false,
+    servers: { tinyfish: { keep: ['search'] } },
+    tools: { 'mcp__exa__agent_run': 'drop' },
+    rewrite: { 'mcp__tinyfish__search': '新说明' },
+  }));
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'export' });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.ok, true);
+  assert.equal(typeof r.json.exportedAt, 'string', '要带导出时间');
+  assert.equal(r.json.config.enabled, false);
+  assert.deepEqual(r.json.config.servers.tinyfish.keep, ['search']);
+  assert.equal(r.json.config.tools['mcp__exa__agent_run'], 'drop');
+  assert.equal(r.json.config.rewrite['mcp__tinyfish__search'], '新说明');
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: export 在配置不存在时导出空基线而不是失败', async () => {
+  const { captured, dir, dispose } = setup();
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'export' });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.config.enabled, true);
+  assert.deepEqual(r.json.config.servers, {});
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: export 在配置损坏时也导出空基线（坏配置要能带出去修）', async () => {
+  const { captured, configPath, dir, dispose } = setup();
+  writeFileSync(configPath, '{ broken');
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'export' });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.json.config.tools, {});
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: import 拒绝非对象', async () => {
+  const { captured, dir, dispose } = setup();
+  for (const bad of [undefined, null, 'text', 42, []]) {
+    const r = await callHandler(captured.route.handler, 'POST', { op: 'import', config: bad });
+    assert.equal(r.status, 400, String(bad) + ' 应被拒');
+    assert.equal(r.json.code, 'EBADARG');
+  }
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: import 拒绝有问题的配置且不落盘', async () => {
+  const { captured, configPath, dir, dispose } = setup();
+  writeFileSync(configPath, JSON.stringify({ enabled: true, servers: {}, tools: {}, rewrite: {} }));
+  const before = readFileSync(configPath, 'utf8');
+  // servers 里有危险的 __proto__ 键（JSON.parse 构造才能走到这层）
+  const bad = JSON.parse('{"enabled":true,"servers":{"__proto__":{"enabled":false}},"tools":{},"rewrite":{}}');
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'import', config: bad });
+  assert.equal(r.status, 400);
+  assert.equal(r.json.code, 'EINVALID');
+  assert.equal(readFileSync(configPath, 'utf8'), before, '拒绝后配置不能变');
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: import 整份替换并留备份', async () => {
+  const { captured, configPath, dir, dispose } = setup();
+  writeFileSync(configPath, JSON.stringify({
+    enabled: true, servers: {}, tools: { 'mcp__a__b': 'drop' }, rewrite: {},
+  }));
+  const incoming = {
+    enabled: false,
+    servers: { tinyfish: { keep: ['search'] } },
+    tools: {},
+    rewrite: { 'mcp__x__y': '改过的说明' },
+  };
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'import', config: incoming });
+  assert.equal(r.status, 200);
+  assert.equal(r.json.needRestart, true);
+
+  const saved = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.equal(saved.enabled, false);
+  assert.deepEqual(saved.servers.tinyfish.keep, ['search']);
+  assert.deepEqual(saved.tools, {}, 'tools 必须被整份替换，不能残留旧的');
+  assert.equal(saved.rewrite['mcp__x__y'], '改过的说明');
+
+  // 备份必须在且内容是导入前的
+  const bak = configPath + '.bak-' + (Date.now() - parseInt(r.json.exportedAt ? 0 : 0));
+  const bakFile = (await import('node:fs')).readdirSync(dir).find(f => f.startsWith('tool-keeper.json.bak-'));
+  assert.ok(bakFile, '导入必须留备份');
+  const bakData = JSON.parse(readFileSync(join(dir, bakFile), 'utf8'));
+  assert.equal(bakData.tools['mcp__a__b'], 'drop', '备份应是导入前的内容');
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: import 只落认可的五个字段，不照抄任意键', async () => {
+  const { captured, configPath, dir, dispose } = setup();
+  const r = await callHandler(captured.route.handler, 'POST', {
+    op: 'import',
+    config: {
+      enabled: true, servers: {}, tools: {}, rewrite: {},
+      evil: '恶意字段', nested: { deep: true },
+    },
+  });
+  assert.equal(r.status, 200);
+  const saved = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.equal(saved.evil, undefined, '任意键不得进入配置');
+  assert.equal(saved.nested, undefined);
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});

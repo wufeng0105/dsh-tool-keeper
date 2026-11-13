@@ -271,6 +271,55 @@ export function mountApi(ctx, deps) {
           return ok(res, { ok: true, needRestart: true });
         }
 
+        // ---- export：导出当前配置 ----
+        if (op === 'export') {
+          // 导出的是**磁盘上的**配置 —— 与页面显示、与「改了没重启」提示共用同一个事实源。
+          // 从内存读会绕过 stale 提示，导出「看起来已生效、其实还没」的内容。
+          let data;
+          try {
+            data = JSON.parse(readFileSync(configPath, 'utf8'));
+          } catch {
+            // 没有配置文件或读坏了：导出全空基线。导出不该失败，坏配置也要能带出去修。
+            data = createBaselineConfig();
+          }
+          return ok(res, {
+            ok: true,
+            exportedAt: new Date().toISOString(),
+            config: data,
+          });
+        }
+
+        // ---- import：整份替换配置 ----
+        if (op === 'import') {
+          const incoming = body.config;
+          if (incoming === null || typeof incoming !== 'object' || Array.isArray(incoming)) {
+            return fail(res, 400, 'EBADARG', 'import 需要 config 对象');
+          }
+          // 先备份当前磁盘内容 —— 导入是整份替换，回退只能靠这份备份
+          if (existsSync(configPath)) {
+            const bak = configPath + '.bak-' + Date.now();
+            writeFileSync(bak, readFileSync(configPath), 'utf8');
+          }
+          // 导入的内容与手改文件走同一条校验路径：normalizeConfig 拒收坏配置
+          const { problems } = normalizeConfig(incoming);
+          if (problems.length > 0) {
+            return fail(res, 400, 'EINVALID', '导入的配置有问题，未保存：' + problems.join('; '));
+          }
+          // 只落 normalizeConfig 认可的五个字段，不照抄导入文件的任意键
+          const data = createBaselineConfig();
+          if (typeof incoming.enabled === 'boolean') data.enabled = incoming.enabled;
+          data.servers = incoming.servers ?? {};
+          data.tools = incoming.tools ?? {};
+          data.rewrite = incoming.rewrite ?? {};
+
+          const again = normalizeConfig(data);
+          if (again.problems.length > 0) {
+            return fail(res, 400, 'EINVALID', '导入的配置有问题，未保存：' + again.problems.join('; '));
+          }
+          saveConfig(configPath, data);
+          return ok(res, { ok: true, needRestart: true });
+        }
+
         return fail(res, 400, 'EUNKNOWN', 'unknown op: ' + String(op));
       } catch (error) {
         log.warn('api error: ' + String(error?.message ?? error));

@@ -537,15 +537,28 @@ test('ui: 工具栏两个按钮同宽，文字居中', () => {
   assert.ok(/align-items:center/.test(base), '按钮文字垂直居中');
 });
 
-test('ui: 工具栏两个按钮渲染出来结构一致', () => {
+test('ui: 工具栏四个按钮渲染出来结构一致', () => {
   const html = renderView(makeData());
   const actions = html.match(/<div class="tw-actions">[\s\S]*?<\/div>/);
   assert.ok(actions !== null);
   const btns = actions[0].match(/<button[^>]*class="tw-btn"[^>]*>/g) || [];
-  assert.equal(btns.length, 2, '工具栏应恰好两个按钮');
-  // 两个按钮的 class 属性必须完全一致（宽度由 CSS 统一，不靠字面）
+  assert.equal(btns.length, 4, '工具栏应恰好四个按钮（全部折叠/刷新/导出/导入）');
+  // 四个按钮的 class 属性必须完全一致（宽度由 CSS 统一，不靠字面）
   const classes = btns.map(b => (b.match(/class="([^"]*)"/) || [])[1]);
-  assert.equal(classes[0], classes[1], '两个按钮的 class 必须一致');
+  for (const cls of classes) assert.equal(cls, classes[0], '四个按钮的 class 必须一致');
+});
+
+test('ui: 工具栏有导出和导入按钮，导入带隐藏的文件选择器', () => {
+  const html = renderView(makeData());
+  assert.ok(html.includes('>导出<'), '应有导出按钮');
+  assert.ok(html.includes('>导入<'), '应有导入按钮');
+  // 导入需要文件选择器，但它在界面上不可见
+  const flat = html.replace(/\s+/g, ' ');
+  assert.ok(/type="file"[^>]*style="[^"]*display:none/.test(flat) ||
+            /style="[^"]*display:none[^"]*"[^>]*type="file"/.test(flat),
+    '应有隐藏的 file input');
+  assert.ok(flat.includes('accept=".json') || flat.includes('accept="application/json"'),
+    '文件选择器应只接受 json');
 });
 
 test('ui: 补丁未装时显示提示且胶囊变红', () => {

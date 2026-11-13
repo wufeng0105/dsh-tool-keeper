@@ -451,6 +451,26 @@ window.__ModuleLoader__.load({
               className: 'tw-btn',
               onClick: props.onReload, disabled: props.busy,
             }, '刷新'),
+            h('button', {
+              className: 'tw-btn',
+              onClick: props.onExport, disabled: props.busy,
+            }, '导出'),
+            h('button', {
+              className: 'tw-btn',
+              onClick: props.onImport, disabled: props.busy,
+            }, '导入'),
+            // 隐藏的 file input：导入要走文件选择器，按钮只是它的代理
+            h('input', {
+              ref: props.importInputRef,
+              type: 'file',
+              accept: '.json,application/json',
+              style: { display: 'none' },
+              onChange: function (e) {
+                var file = e.target.files && e.target.files[0];
+                props.onImportFile(file);
+                e.target.value = ''; // 允许连续导入同一个文件
+              },
+            }),
           ),
         ),
 
@@ -510,6 +530,7 @@ window.__ModuleLoader__.load({
       var s5 = React.useState(''); var draft = s5[0]; var setDraft = s5[1];
       var s6 = React.useState({}); var collapsed = s6[0]; var setCollapsed = s6[1];
       var s7 = React.useState(''); var query = s7[0]; var setQuery = s7[1];
+      var importInputRef = React.useRef(null);
 
       var load = React.useCallback(function () {
         setError(null);
@@ -579,6 +600,46 @@ window.__ModuleLoader__.load({
           .then(function () { setBusy(false); });
       }
 
+      /** 导出：取磁盘上的配置，落成一个带时间戳的本地文件。 */
+      function onExport() {
+        setBusy(true); setError(null);
+        call({ op: 'export' }).then(function (payload) {
+          var stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          var blob = new Blob([JSON.stringify(payload.config, null, 2)], { type: 'application/json' });
+          var url = URL.createObjectURL(blob);
+          var a = document.createElement('a');
+          a.href = url;
+          a.download = 'tool-keeper-config-' + stamp + '.json';
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        }).catch(function (e) { setError(e.message); })
+          .then(function () { setBusy(false); });
+      }
+
+      /** 导入按钮只是打开文件选择器；真正的导入在 onImportFile 里。 */
+      function onImport() {
+        if (importInputRef.current) importInputRef.current.click();
+      }
+
+      /**
+       * 导入是整份替换。先本地解析 JSON（fail fast，省一次往返），
+       * 再交给服务端校验落盘 —— 服务端会先备份再校验，坏配置不会进来。
+       */
+      function onImportFile(file) {
+        if (!file) return;
+        setBusy(true); setError(null);
+        file.text().then(function (text) {
+          var parsed = JSON.parse(text); // 解析失败直接进 catch，报给用户
+          return call({ op: 'import', config: parsed });
+        }).then(function () {
+          return call({ op: 'state' });
+        }).then(function (next) { setData(next); })
+          .catch(function (e) { setError('导入失败：' + e.message); })
+          .then(function () { setBusy(false); });
+      }
+
       function onReset() {
         setBusy(true); setError(null);
         call({ op: 'reset' }).then(function () {
@@ -611,6 +672,10 @@ window.__ModuleLoader__.load({
         onSaveRewrite: onSaveRewrite,
         onReset: onReset,
         onReload: load,
+        onExport: onExport,
+        onImport: onImport,
+        onImportFile: onImportFile,
+        importInputRef: importInputRef,
       });
     }
 
