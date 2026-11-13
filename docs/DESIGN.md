@@ -1,69 +1,47 @@
-# 设计决策与宿主契约
+# 为什么这样实现
 
-这个文件回答「**要做什么**」与「**为什么这么做**」。改机制之前先读它，否则很容易退回到已经被推翻的做法。
+改机制之前先读这个文件。它记录的全是**被验证过的判断**和**被推翻的路线**——
+不知道这些，很容易把已经证明行不通的做法再造一遍。
 
----
-
-## 范围
-
-### R1 准入：决定哪些工具进入上下文
-
-- 按服务器整体开关（例：tinyfish 43 个工具全隐藏）
-- 按服务器保留白名单（例：只留 `search`、`fetch_content`）
-- 按单个工具开关（精确到 `mcp__tinyfish__create_dataset`）
-- 原生工具与 MCP 工具一视同仁，同一套规则
-
-> **机制副产品**：被隐藏的工具不进入注册表。这不是需求，是 D1 的后果。
-> 它买到的是：被隐藏的工具**不可能**被其他插件或 Inspect 重新看见。
-> 代价是**没有「解除遮罩」的备用出口**——因此总开关（R4.4）是必需的补偿。
-
-### R2 改写：重写说明文字
-
-- 改工具的 `description`
-- 改单个参数的 `description`（例：`include_selectors` 那 1,080 字符的教程）
-- 改写后工具**照常可调用**，只是模型看到的文本变了
-- 一键还原成原始文本
-
-**判据**：改写后 `Tool.listTools` 返回的 `description` 是改写后的文本，且调用仍成功。
-
-### R3 界面
-
-- 设置页里有一页（`settings.section`），不是侧边栏面板
-- 按来源分组，每个工具一个开关（**不做勾选框**：没有批量操作，勾选框是摆设）
-- 每个工具能展开看到并编辑说明
-- 显示每个工具估算的 token 占用
-- 配置写错的条目在界面上明确报出来，不静默失效
-- **页面显示的状态必须与引擎判定一致**：开关状态取自 `decide()` 的 `effective`，
-  不由页面从配置自行推断——否则服务器白名单 / 总开关造成的隐藏会在页面上显示成「开」，
-  等于让人照着假状态做决定
-- **改完未重启时必须持续提示**：该状态由服务端比对配置指纹得出，不依赖页面内存，
-  刷新后不能消失
-
-### R4 可靠性
-
-- **冷启动即生效**（完整宿主进程重启，这是 `tool-mask` 栽的地方）
-- 保护名单硬编码：`read` / `write` / `edit` / `pwsh` 等任何配置都关不掉，避免把会话锁死
-- 卸载或清空配置后，一切恢复服务器原样
-- **总开关**：一键禁用全部干预。注意它只关过滤、不关管理入口（见 D1 末段）
-- **配置损坏不锁死**：解析失败按全放行运行，绝不中断注册链
-
-### 明确不做
-
-- 不碰 MCP 服务器连接（那是 `mcp-manager` 的事）
-- 不做 `parameters` 结构裁剪（风险 > 收益，见 D2）
-- 不做按会话 / 按预设的临时开关
-- 不做分发守卫（`guard()`）——工具不进注册表，模型点名也调不到，不需要第二道
+用法见 [README](../README.md)。
 
 ---
 
-## D1 机制：拦截 `tools.register`，不用 `restrict()`
+## 零、要解决的问题是什么
 
-DSH 官方推荐用 `ctx.tools.restrict({deny})` 隐藏工具（`practices.md:17`），但那个能力**只能移除，不能改写**。本项目同时要做改写，所以必须走注册期拦截。
+配一个 MCP 服务器，它默认给你十几个工具，你常用的两个，剩下的用不上。
+更要紧的是**它的工具说明你改不了**——那是厂商写的，里面还常带着
+「你必须先调用我」「不要用那个」这类指令，直接跟你的真实需求打架。
 
-### 论证链：模型看到的文本从哪里来
+所以这个插件要拿到两件东西：
 
-**证据 A（L3，源码）** MCP 工具与内置工具走**同一个注册入口**：
-`dsh-mcp-client/src/tools.ts:176-178`
+1. 能挑（用不上的彻底不发给模型）
+2. **能改**（说明文字由用户决定）
+
+第 2 件是整篇设计的起因。下面所有技术选择的根源都在这里：
+官方推荐的 `restrict()` 只能删、不能改，所以必须绕道。
+
+> **省 token 是副产品，不是目的。**
+> 早期版本的文档把 token 当成主线，那是错的——如果只为省 token，
+> 用 `restrict()` 就够了，完全不必冒险拦截注册入口。
+> 值得冒这个险的，是「改说明」这个能力本身。
+
+---
+
+## 一、核心机制：拦截注册入口
+
+### 官方推荐的做法不够用
+
+DSH 官方推荐用 `ctx.tools.restrict({deny})` 隐藏工具（`practices.md:17`）。
+
+那个能力**只能把工具移除，不能改工具说的话**。本项目同时要做改写，所以必须自己动手。
+
+### 为什么改写必须发生在「注册」这一步
+
+这里需要先回答一个问题：模型看到的工具说明，到底是从哪里读出来的？
+
+**证据 A（源码，L3）** MCP 工具和内置工具走的是**同一个注册入口** —
+`dsh-mcp-client/src/tools.ts:176-178`：
 
 ```ts
 for (const [publicName, definition] of definitions) {
@@ -71,218 +49,142 @@ for (const [publicName, definition] of definitions) {
 }
 ```
 
-**证据 B（L3，源码）** `description` 在**构造 definition 时**就被写入：
-`dsh-mcp-client/src/tools.ts:145-149` → `createMcpToolDefinition` → `tools.ts:257-260`
+**证据 B（源码，L3）** `description` 在**构造 definition 的时候**就被写进去了 —
+`dsh-mcp-client/src/tools.ts:145-149` → `createMcpToolDefinition` → `tools.ts:257-260`：
 
 ```ts
 return { name, description, parameters: inputSchema, output: ... }
 ```
 
-**证据 C（L3，源码）** 模型侧看到的 schema 从注册的 definition 投影而来：
-`dsh-tools/src/schema.ts:641-646` `projectToolSchema()` 取 `{ name, description, parameters }`。
+**证据 C（源码，L3）** 模型看到的 schema 是从注册的 definition 投影出来的 —
+`dsh-tools/src/schema.ts:641-646`，`projectToolSchema()` 取 `{ name, description, parameters }`。
 
-**由此得出**：模型可见文本 = 注册时存入 definition 的字段。
-`restrict()` 只影响「哪些 definition 可见」，**不影响 definition 内的字段内容**。
-**所以改写必须发生在注册期。** 论证闭合。
+**所以**：模型能看到的文字 = 注册那一刻存进 definition 的字段。
+`restrict()` 只改变「哪些 definition 可见」，**不改 definition 内部的字段**。
 
-这同时解释了验收时为何可用 `Tool.listTools` 判真假：它返回的 `description` 就是模型看到的那份。
+结论：改写只能发生在注册期。论证闭合。
 
-### 为什么不选另两条路线
+这也顺带解释了验收方法为什么有效：`Tool.listTools` 返回的 `description` 就是模型看到的那份。
 
-- **`restrict()` 管准入 + 另一机制管改写**：另一机制仍需在注册期动 definition，
-  等于同一件事做两遍，且两套机制的状态要同步。无收益。
-- **只在读取路径改写**：读取路径是 `projectToolSchema`，在 `dsh-tools` 包内、非本插件所有；
-  要拦截它需改宿主代码或再打一次补丁，且每个请求都要改写，成本高于注册期一次。
+### 为什么不走另外两条路
 
-### 已知风险与退路
+**「`restrict()` 管准入 + 另一个机制管改写」**
+另一个机制照样得在注册期改 definition，等于一件事做两遍，而且两套机制的状态要互相同步。没有收益。
 
-| 风险 | 症状 | 检测 | 退路 |
-|---|---|---|---|
-| 宿主改了 `register` 签名 | 加载即抛或静默不生效 | 断言 `typeof register === 'function'`；装后查工具数 | 退回 `restrict()` 只隐藏、不改写 |
-| 服务被冻结 / sealed | `Reflect.set` 抛错 | 捕获后置 `patched: false` 并在界面告警 | 同上 |
-| 内部调用绕过替换（`this.register`） | 改写不生效但无报错 | 装后查 `Tool.listTools` 的 description | 同上 |
-| Cordis 代理让覆写失效 | 同上 | 同上 | 同上 |
-
-**共同兜底**：总开关 `enabled: false` 即全放行。
-注意它只关「过滤」，不关管理入口——模型工具与设置页 API 仍然注册，否则用户失去恢复路径。
+**「等模型来读的时候再改」**
+读取发生在 `projectToolSchema`，那是 `dsh-tools` 包内部，不属于本插件。
+要拦截它得改宿主代码或再打一次补丁；而且每个请求都要改一遍，成本比注册期改一次高得多。
 
 ---
 
-## D2 只改文本，不改结构
+## 二、只改文字，不碰结构
 
-改 `description` 与 `properties.<name>.description`，**不碰** `type` / `required` / `enum` / 参数集合 / 默认值。
+改的只有两处：工具的 `description`，和参数里的 `properties.<名字>.description`。
 
-理由：结构改错会让工具直接报错（模型按错误 schema 调用），文本改错只是说明不准。
-风险不对等，所以只做前者。
+**不碰**：`type`、`required`、`enum`、有哪些参数、默认值。
 
----
+理由是风险不对等：
 
-## D3 配置存独立文件
+- 结构改错 → 工具直接报错，模型按错误的格式去调用，功能彻底坏掉
+- 文字改错 → 最多是说明写得不准，工具照样能用
 
-`~/.dsh/tool-keeper.json`，不写 profile 的 `cordis.patch.yml`。
-
-理由：界面要频繁写，而 profile 的 patch 是用户主配置、混着别人的行和注释，程序化改写有覆盖风险。
+所以只做风险低的那一半。
 
 ---
 
-## D4 界面形态：`settings.section` 一页
+## 三、配置为什么单独放一个文件
 
-一个 slot（`settings.section`，kind: list，注册 `{id, order?, label?}`），不碰 `sidebar.panellist` + `main` 的联动与 dispatch 协调。
+配置在 `~/.dsh/tool-keeper.json`，不写进 profile 的 `cordis.patch.yml`。
 
-`ctx.inject(['webServer'], cb)` 运行期注入挂载 `/tool-keeper/api`，**不能写进 `inject`**：
-headless 下没有这个服务，写进去插件会永远 pending，宿主把它当 web boot 失败。
-
----
-
-## D5 加一个模型可调用的管理工具
-
-`tool_keeper`。设置页给人用，这个工具给模型用。两者写同一份配置、走同一套 `rules.js`。
-
-理由：用户不必为了关一个工具去点界面。
+因为界面会频繁写这个文件。而 `cordis.patch.yml` 是用户的主配置，混着别人的行和注释，
+程序化改写它有把用户东西冲掉的风险。分开写，坏了也只坏自己这一个文件。
 
 ---
 
-## 宿主契约备忘（L3，查证于 0.2.2-rc.2）
+## 四、界面为什么是设置页里的一页
 
-| 事项 | 结论 | 出处 |
-|---|---|---|
-| MCP 与内置工具同一注册入口 | 是 | `dsh-mcp-client/src/tools.ts:176-178` |
-| description 构造时固定 | 是 | `dsh-mcp-client/src/tools.ts:257-260` |
-| 模型看到的 schema 来源 | `projectToolSchema()` 从 definition 投影 | `dsh-tools/src/schema.ts:641-646` |
-| `restrict()` 可否改写内容 | 不能，只能移除 | `practices.md:10,17` |
-| `restrict()` 的作用域要求 | 读 `scopeOf(this.ctx)`，须挂成 agent 作用域的子插件 | `dsh-tools/src/index.ts:163-166` |
-| `restrict()` 未知名字 | 抛错 | `dsh-tools/src/index.ts:179-183` |
-| 浏览器半的发现方式 | 只认「包的精确包名」或「路径里最近的 package.json」 | 本机 `dsh-enhance` 实现 |
-| 浏览器半的模块形态 | `window.__ModuleLoader__.load({id, factory})`，**不能有 ESM export/import** | 同上 |
-| 客户端 RPC | `fetch('/<plugin>/api', {method:'POST', body: JSON.stringify(...)})` | 同上 |
+注册一个 `settings.section` 槽位（`{id, order?, label?}`）就够了。
 
-### 为什么不用 `restrict()`
+不走侧边栏面板那条路，因为那需要跟 `sidebar.panellist` 和 `main` 联动，还要协调 dispatch，复杂度不成比例。
 
-除了不能改写，它还有一个结构性问题：**冷启动会失效**。
-`tool-mask`（同类实现）踩过这个坑——它在加载时算一次 deny 集合，而 MCP 是异步注册的；
-插件先于 MCP 连接加载时，`resolveNames()` 返回空集，之后没有重试，**冷启动必然不生效**。
+### 一个必须记住的坑
+
+挂 HTTP 接口用的是 `ctx.inject(['webServer'], cb)` 这种**运行期注入**，
+**不能把 `webServer` 写进 `inject` 数组**。
+
+原因：headless 环境下没有这个服务。写进 `inject`，插件会一直在等一个永远不会出现的服务，
+永远处于 pending 状态，宿主会把它当成 web 启动失败。
+
+---
+
+## 五、为什么还要给模型一个工具
+
+`tool_keeper`。
+
+设置页是给人用的，这个工具是给模型用的。两者写同一份配置、走同一套判定逻辑。
+
+理由很简单：为了关掉一个工具，不值得专门去点界面。说一句话就行了。
+
+---
+
+## 六、被推翻的路线（最有价值的部分）
+
+### `tool-mask` 的做法：加载时算一次黑名单
+
+同类实现 `tool-mask` 用的是这个思路，它有一个致命问题：
+
+它在插件加载时算一次要屏蔽哪些工具。但 MCP 服务器是**异步连接**的——
+如果插件先于 MCP 连接完成，那一刻工具清单是空的，算出来的黑名单就是空的，
+之后也**没有重试机制**。
+
+结果：**冷启动必然失效**。这恰恰是最常见的启动方式。
 
 注册期拦截从结构上避开了这个问题：每注册一个工具就判一次，不存在「算早了」的窗口。
 
----
+### 出厂基线：两次都错
 
-## preflight 的 9 项里有两项是 UNVERIFIABLE，不是失败
+第一版：关掉了 6 个「低频」内置工具（`create_goal`、`exit_plan_mode` 等）。
+错在**这是砍功能**——那几个是 DSH 精挑细选默认开着的。
 
-`preflight.mjs` 稳态输出为 **7 PASS / 0 FAIL / 2 UNVERIFIABLE**。
+第二版：改成「只对 tinyfish 保留 2 个工具」。看起来保守了，但**仍然是在替用户做决定**——
+用户可能根本没用 tinyfish。
 
-### ① slot 注册形态（已人工核实为合法）
+交付的版本：**全空**。装完跟没装完全一样，省 0 token。
 
-preflight 会标记 `slots.inject` 回调里出现 `slots.register` 的写法，理由是
-2026-11-10 有过「设置页看不到」的事故是同类形态。
-
-**本项目的结论：合法形态。** 依据有两条：
-
-1. 真机验证：重启后 `Slots.listSubTree('settings.section')` 的 occupants 里
-   有 `{ id: "tool-keeper", order: 50, active: true }`，设置页可见。
-2. 同宿主已上架的 `dsh-enhance` 用的是**逐字相同**的写法
-   （`ui/client.js:926-927`），它工作正常。
-
-preflight 那条检查给出的补法就是「人工打开设置页确认是否可见」，已照做。
-
-### ② 完整插件集共存
-
-只能在设备齐全的真机环境上验证：把插件装进复刻目标 bundle 组合的一次性 profile，
-启动看是否出现 `1 entry did not activate`。
-
-**当前状态：本机日常 profile 装了这个插件，重启后正常加载、无 entry 失败。**
-但这不等于「复刻环境验证过」——一次性 profile 的完整流程尚未跑。不冒充通过。
+判断标准：管理工具的出厂状态不应该管理任何东西。它该做的是把全部工具摆出来让人看见，
+看到是透明，关掉是决策——前者默认给，后者等用户说。
 
 ---
 
-## 已知缺陷
+## 七、已知风险与退路
 
-| 缺陷 | 说明 |
-|---|---|
-| `readKnownServers` 只认一种 YAML 写法 | 见上文 A8 三态下方的说明。五种合法写法全部读不出 |
-| 三类静默失效无诊断 | 对保护工具配改写、对被丢弃工具配改写、`tool.js` 写配置不校验（导入了 `normalizeConfig` / `diagnose` 却没用） |
-| 双重 apply 的 restore 无栈语义 | 只还原一层，且会覆盖后装插件的补丁。触发条件是同一插件被两条 patch 行加载或热重载，概率低 |
-| 页面未使用一半的 state 字段 | `enabled` / `rules.servers` / `disabledServers` / `descChars` 零引用。死字段无害但会误导后来者 |
-| 参数改写无独立开关 | 设计上曾写「默认关闭、需显式开启」，实际配了就生效 |
-| 恢复出厂无二次确认 | 一次点击清空全部规则；API 留 `.bak-<时间戳>` 备份，但页面不提示位置 |
+| 风险 | 症状 | 怎么发现 | 退路 |
+|---|---|---|---|
+| 宿主改了 `register` 的签名 | 加载就抛错，或静默不生效 | 启动时断言 `typeof register === 'function'`；装完查工具数 | 退回 `restrict()`，只隐藏不改写 |
+| 服务被冻结（frozen/sealed） | `Reflect.set` 抛错 | 捕获后置 `patched: false` 并在界面告警 | 同上 |
+| 内部调用绕过替换（直接 `this.register`） | 改写不生效但没有任何报错 | 装完查 `Tool.listTools` 里的 description | 同上 |
+| Cordis 的代理让覆写失效 | 同上 | 同上 | 同上 |
 
----
+**统一兜底**：总开关 `enabled: false`，插件完全停止干预。
 
-## 优先级与归一化
-
-三条规则冲突时：**最具体者胜**
-
-```
-受保护  >  单工具规则  >  服务器白名单  >  服务器总开关
-```
-
-`rules.js` 的 `decide()` 是这条链的唯一实现，切页显示的开关状态也取它的结果
-（`effective`），不由页面另行推断。
-
-保存时**归一化成单一结果**再落盘，不保存多层原始意图。因此界面开关是二态（开/关），不是三态。
+注意总开关只关「过滤」，**不关管理入口**。模型工具和设置页接口仍然注册。
+早先的写法在这里直接 return，导致关掉总开关之后重启，恢复入口也一起消失了，
+用户只能手改 JSON 才能救回来。逃生门不能只有门没有把手。
 
 ---
 
-## 验收怎么判
+## 八、断言的纪律
 
-**通用前置**：测前须等所有 MCP 连接完成，信号是 `Tool.listTools` 的名字集合达到基线
-（首次记录的全量工具名，**不是固定数量**）。
+**用名字集合断言，不用数量。**
 
-**通用判定方式**：用**名字集合断言**，不用数量。数量会随挂载的服务器变化，集合不会。
+工具总数会随你装了哪几个 MCP 服务器变化。写「应该是 105 个」这种断言，
+换台机器就红。写「应该是基线减去我关掉的那些」才稳定。
 
-| # | 标准 | 怎么判 |
-|---|---|---|
-| A1 | 装得上 | `install_bundle` 返回 `application: applied`（冒烟，证明力有限） |
-| A2 | 隐藏生效 | 配置隐藏集合 H → `listTools` 名字集合 == 基线 − H |
-| A3 | 改写生效 | 改某工具说明 → `listTools` 中该工具的 `description` == 改写文本 |
-| A4 | 工具仍可用 | 改写后实调成功。**只能证明没把结构改坏，不能证明改写质量** |
-| A5 | 冷启动生效 | **完整重启宿主进程**（非刷新、非热重载）→ 名字集合仍 == 基线 − H 且改写文本仍在 |
-| A6 | 保护生效 | ①界面尝试关 `read` → 被拒且有可见提示 ②手改配置加入 → 仍不被隐藏且报错 |
-| A7 | 还原生效 | ①清空配置 → 集合 == 基线 ②卸载插件 → 集合 == 基线 |
-| A8 | 诊断可见 | 三态分别验证（见下） |
-| A9 | 配置损坏不锁死 | 写坏配置成半截 JSON → DSH 正常启动、集合 == 基线、界面报错 |
+**测前必须等所有 MCP 连接完成。** 信号是 `Tool.listTools` 返回的名字集合达到基线
+（首次记录的全量工具名），不是等一个固定秒数。
 
-### A8 的三态
+**任何检查先证明它会红。** 写一个永远通过的断言不算测试——
+这个项目里出现过一条 `aria-expanded="true"` 的断言，分组标题本身就带这个属性，
+所以无论实现对错它都绿。改成按工具名单独取之后才有意义。
 
-配置里的服务器名，对照 `cordis.patch.yml` 的 `mcp-manager.servers`：
-
-| 情形 | 判定 | 界面 |
-|---|---|---|
-| server 不在 `servers` 里 | **硬错误** | 红色，规则标为无效 |
-| server 在 `servers` 里，但当前无工具 | **警告** | 黄色「暂不可用，规则保留」（服务器未连接，配置本身没错） |
-| server 有工具，但规则里的工具名匹配不上 | **警告** | 黄色「工具不存在（可能改名）」 |
-
-第三态比「服务器名不存在」更常发生：工具改名比服务器消失常见得多。
-
-> **已知缺陷**：`readKnownServers()` 目前用手写正则扫 `cordis.patch.yml`，
-> 只认一种 YAML 写法。引号包裹的服务器名、名字带点、4 空格缩进、行尾注释、
-> 流式对象——五种合法写法全部读不出来。读不出时该服务器的规则静默失效，
-> 且诊断会误报「server not found」。
-> 修法：改用真 YAML 解析，或把数据源换成 mcp-manager 的 Config（`cordis_inspect` 的 Config provider 是权威源）。
-
----
-
-## 配置格式
-
-```jsonc
-{
-  "enabled": true,                          // 总开关，false = 全部放行
-  "servers": {
-    "tinyfish": { "keep": ["search", "fetch_content"] },  // 只保留列出的
-    "lexiang": { "enabled": false }                        // 整个服务器关闭
-  },
-  "tools": {
-    "mcp__exa__agent_run": "drop"           // 单工具；受保护工具写了会被拒绝
-  },
-  "rewrite": {
-    "mcp__tinyfish__search": "搜索网页与外部知识。",          // 简单形态：只改工具说明
-    "mcp__tinyfish__fetch_content": {                        // 完整形态：含参数说明
-      "description": "读取网页正文。",
-      "properties": { "include_selectors": "只提取匹配的元素。" }
-    }
-  }
-}
-```
-
-`__proto__` / `constructor` / `prototype` 不能作键：它们会走到原型 setter，
-表现为「报成功但什么也没写」。解析阶段直接拒绝并记 `problems`。
-
+详细判法见 [TESTING.md](./TESTING.md)。
