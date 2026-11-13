@@ -57,9 +57,10 @@ window.__ModuleLoader__.load({
       '.tw-summary{margin:10px 0 0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;font-variant-numeric:tabular-nums}',
       '.tw-divider{height:0;border-top:1px solid var(--dsw-alias-border-l2);margin:12px 0 14px}',
 
-      /* ── 分组：标题行在外，工具盒子直接排在页面上，不再套一层卡片 ──
-         三层盒子（分组卡 → 工具盒）会让盒子间隙露出分组卡底色，显脏。
-         去掉分组卡片这一层后，缝隙露出的是页面背景，视觉上干净。 */
+      /* ── 分组：标题行在外，一个盒子包住整组工具 ──
+         用户三轮反馈收敛出的形态：不是行级盒子（盒与盒之间的缝多），
+         也不是完全无包裹（看不出每组的边界），
+         而是每个来源（内置 / 每台 MCP）一整个盒子，组内行间用发丝线。 */
       '.tw-group{margin:0 0 20px}',
       '.tw-groupHeading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:34px;margin:0 0 8px;user-select:none}',
       '.tw-groupToggle{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;padding:4px 0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}',
@@ -72,10 +73,10 @@ window.__ModuleLoader__.load({
       '.tw-chevron:not(.is-open){transform:rotate(-90deg)}',
       '.tw-groupToggle:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
 
-      /* ── 列表与行 ── */
-      '.tw-list{display:flex;flex-direction:column;gap:8px}',
-      /* 每个工具自己是一个带边框圆角的盒子（用户指定：要包裹感，不是分隔线） */
-      '.tw-item{display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm,8px);overflow:hidden}',
+      /* ── 列表与行：盒子包住整组，行间发丝线 ── */
+      '.tw-list{display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm,8px);overflow:hidden}',
+      '.tw-item{display:flex;flex-direction:column}',
+      '.tw-item+.tw-item{border-top:.5px solid var(--dsw-alias-border-l2)}',
       '.tw-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:44px;padding:6px 10px;transition:background 150ms ease}',
       '.tw-row:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.tw-icon{flex:none;width:34px;height:34px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-1);display:flex;align-items:center;justify-content:center;position:relative}',

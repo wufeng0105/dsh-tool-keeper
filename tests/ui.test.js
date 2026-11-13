@@ -133,21 +133,29 @@ test('ui: 导航排序用 50，不与已知插件撞号', () => {
 // ─────────────────────────────────────────────
 // 分组卡片：外面一个整体
 // ─────────────────────────────────────────────
-test('ui: 分组只是标题行，工具盒子直接排在页面上（两层，不是三层嵌套）', () => {
+test('ui: 分组 = 标题行 + 一个盒子包住整组工具（行间发丝线）', () => {
   const { mod } = loadUi();
   const css = mod.__testing.CSS;
-  // 分组不再自带卡片（边框/圆角/底色都删了），否则工具盒子之间的缝隙会露出卡片底色
+  // 分组标题行不带卡片（那是三轮前被否掉的三层嵌套）
   const groupRule = css.match(/\.tw-group\{([^}]*)\}/);
   assert.ok(groupRule !== null, '要有 .tw-group 规则');
-  assert.ok(!/border/.test(groupRule[1]), '分组不能有边框');
-  assert.ok(!/border-radius/.test(groupRule[1]), '分组不能有圆角');
-  assert.ok(!/background/.test(groupRule[1]), '分组不能有底色');
+  assert.ok(!/border/.test(groupRule[1]), '分组标题行不能有边框');
+  assert.ok(!/background/.test(groupRule[1]), '分组标题行不能有底色');
 
-  // 工具盒子才有包裹感
+  // 包裹感在「列表」这一层：一个盒子包住整组工具
+  const listRule = css.match(/\.tw-list\{([^}]*)\}/);
+  assert.ok(listRule !== null);
+  assert.ok(/border:1px solid/.test(listRule[1]), '列表要有边框包住整组');
+  assert.ok(/border-radius/.test(listRule[1]), '列表要圆角');
+  assert.ok(/overflow:hidden/.test(listRule[1]), '圆角要裁切内部');
+
+  // 行级不再有盒子（那是上一轮被否的方案，盒与盒之间的缝很丑）
   const itemRule = css.match(/\.tw-item\{([^}]*)\}/);
   assert.ok(itemRule !== null);
-  assert.ok(/border:1px solid/.test(itemRule[1]), '工具行要有边框');
-  assert.ok(/border-radius/.test(itemRule[1]), '工具行要圆角');
+  assert.ok(!/border:/.test(itemRule[1]), '单个工具行不能自己带边框');
+
+  // 行与行之间用发丝线
+  assert.ok(/\.tw-item\+\.tw-item\{border-top:\.5px solid/.test(css), '行间要发丝线');
 });
 
 test('ui: 渲染出两个分组卡片', () => {
