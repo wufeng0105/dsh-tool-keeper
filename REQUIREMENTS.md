@@ -125,23 +125,69 @@ MCP 服务器配置页（增删改启停）留到第二阶段。**理由**：那
 
 ---
 
-## 六、待验证项（动手前必须查清）
+## 六、已查清的契约（L3，来自 plugin-kit 的 dsh-doc 副本）
 
-| 项 | 现状 | 影响 |
-|---|---|---|
-| 客户端↔宿主的 RPC 方式 | **UNVERIFIABLE**，未查清 `settings.section` 里的组件如何调用宿主方法 | 阻塞 R3 |
-| `settings.section` 的 props 形状 | 已知 kind: list，`{id, order?, label?}`；渲染组件收什么 props 未查 | 阻塞 R3 |
-| `dsh.client` 声明方式 | `dsh-enhance` 用 `./ui/index.js` + `ui/package.json` 的"最近 package.json"规则（L3，其 patch 注释里写明） | 影响打包 |
-| 改写后的 `definition` 是否被下游重新校验 | 未查 | 影响 A3 |
+来源：`dsh-plugin-kit/skills/plugin-kit/host-skills/dsh-doc/references/practices.md` 与 `ui-plugin.md`。
+这是可 grep 的文档副本，不必读 app.asar。
 
-**这四项查完之前不写功能代码。** 查法按 plugin-kit 三步：先 `cordis_inspect_query`，再 `dsh-doc`，最后读真实插件的 `lib/`。
+### 6.1 官方对"隐藏工具"的推荐（与 D1 存在张力）
+
+`practices.md:17` 原文：
+
+> Hiding tools from one agent is `ctx.tools.restrict()` on that agent's context;
+> it keeps schema presentation, lookup, and execution aligned.
+
+`practices.md:10` 把扩展点从弱到强排列：
+
+> `ctx.tools.restrict()` can only remove tools; `ctx.tools.guard()` can only deny;
+> waterfall listeners can rewrite and depend on registration order;
+> `system-prompt/assemble` replaces the whole assembly.
+
+**冲突记录**：官方推荐 `restrict()`，但本项目 D1 选择拦截 `register`，理由是 R2 需要"改写"而 `restrict()` 只能"移除"。
+**未决**：这个偏离是否可接受，待审计结论。
+
+### 6.2 UI 的硬约束
+
+- `ui-plugin.md:11`：slot 的 props 与 options 用 `Slots.listSubTree` 查
+- `practices.md:33`：**不得** serve HTML 页面再用 iframe 嵌入（拿不到主题 token / locale）
+- `practices.md:35`：**不得** require 任何 `@deepseek-ai/dsh-client-ui-*` 包作为模块，会崩
+- `practices.md:36`：`ctx.slots.inject(ownerKey, () => ctx.slots.register(...))`
+- `practices.md:34`：样式用 `--dsw-alias-*` 主题 token；管理列表的参照物是 Plugin Manager 页
+
+### 6.3 插件数据的存放
+
+`practices.md:21`：
+
+> Do not append session events with a new `type` … keep plugin-owned data in a storage service found through inspection.
+
+`practices.md:22`：
+
+> Put tunable values in the plugin's `Config` so users change them in `cordis.patch.yml`;
+> the user's patch layer survives upgrades.
+
+**冲突记录**：这条推荐把可调值放 `Config`，而 D3 选择独立文件 `~/.dsh/toolwarden.json`。
+理由见 D3（UI 频繁写、避免覆盖用户主配置），但需记录这个偏离。
 
 ---
 
-## 七、已确认的事实（备查）
+## 七、原计划的待验证项（部分已查清）
+
+| 项 | 现状 | 影响 |
+|---|---|---|
+| slot 的 props 形状 | 可用 `Slots.listSubTree` 查；`settings.section` 已知 kind:list | 已缓解 |
+| 客户端↔宿主 RPC | **仍 UNVERIFIABLE** | 阻塞 R3 |
+| `dsh.client` 声明方式 | 已知：`package.json` 加 `dsh.client`（platform/immediately/inject）+ `./client` export | 已查清 |
+| 改写后的 `definition` 是否被下游重新校验 | **仍 UNVERIFIABLE** | 影响 A3 |
+
+**这两项 UNVERIFIABLE 查清之前，R3 界面不开工。R1/R2 宿主侧可以先做。**
+
+---
+
+## 八、已确认的事实（备查）
 
 - 本机 DSH 版本 `0.2.2-rc.2`（L1）
 - 当前工具总数 101，MCP 56 + 内置 45，合计约 52,100 tokens/轮（L1）
-- `tool-mask` 当前**未生效**：重启后 tinyfish 仍是 43 个工具（L1）
+- `tool-mask` 已于 2026-11-13 从 profile 的 `cordis.patch.yml` 移除（L1，`include:tool-mask` 在 Loader 中已查不到）；`local/tool-mask.scope.mjs` 文件本体保留未删
 - DSH 没有任何 MCP 管理界面包（L3，11 个 `ui-settings-*` 包中无一与 MCP 相关）
 - MCP 服务器配置确实就是 `cordis.patch.yml` 里的 `mcp-manager.servers`（L1，读了实际文件）
+- plugin-kit 自带 `host-skills/dsh-doc/` 可 grep 的文档副本（40 文件），不必读 app.asar（L1）
