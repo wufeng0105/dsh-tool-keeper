@@ -108,7 +108,7 @@ test('ui: apply 注册到 settings.section，id=tool-keeper', () => {
   assert.ok(registered !== null);
   assert.equal(registered.opts.name, 'settings.section');
   assert.equal(registered.opts.id, 'tool-keeper');
-  assert.equal(registered.opts.label(), 'Tool Keeper');
+  assert.equal(registered.opts.label(), '工具管理');
   assert.equal(typeof registered.comp, 'function');
 });
 
@@ -320,17 +320,39 @@ test('ui: 只配了参数改写（没有 description）时也不该一展开就�
 // ─────────────────────────────────────────────
 // 头部与状态
 // ─────────────────────────────────────────────
-test('ui: 标题行只有标题与说明，不挂状态标签和统计块', () => {
+test('ui: 页面内不再重复标题与说明（导航里已经叫「工具管理」）', () => {
   const html = renderView(makeData());
-  assert.ok(html.includes('tw-head'));
-  assert.ok(html.includes('Tool Keeper'));
-  assert.ok(html.includes('tw-intro'));
 
-  // 这些是用户明确要求删掉的：顶部标签与底部按钮重复，统计块是无效数字
+  // 导航行已经有「工具管理」，页面里再写一遍是重复
+  assert.ok(!html.includes('tw-title'), '不应有页内标题');
+  assert.ok(!html.includes('tw-intro'), '不应有页内说明');
+  assert.ok(!html.includes('tw-head'), '不应有标题行容器');
+  assert.ok(!html.includes('Tool Keeper'), '旧英文名不应出现');
+  assert.ok(!html.includes('工具管理'), '页面内不重复导航名');
+
+  // 之前几轮删掉的东西也不能回来
   assert.ok(!html.includes('tw-pill'), '不应有状态胶囊');
   assert.ok(!html.includes('出厂状态'), '不应重复显示出厂状态');
   assert.ok(!html.includes('tw-headerCard'), '不应有头部卡片');
   assert.ok(!html.includes('tw-stat'), '不应有统计块');
+});
+
+test('ui: 未重启时提示必须说清「模型仍然能看见并使用」', () => {
+  const data = makeData();
+  data.stale = true;
+  const html = renderView(data);
+
+  // 关键：只写「重启后生效」会让人以为已经生效了。
+  // 必须明说重启之前模型仍然能看见并使用这些工具。
+  assert.ok(html.includes('重启 DSH 后才生效'));
+  assert.ok(/仍然能看见并使用/.test(html), '必须说明重启前仍然生效');
+
+  // 旧文案「下面显示的是重启后才会成立的状态」在去掉字符/token 显示后已经不准确
+  assert.ok(!/重启后才会成立的状态/.test(html), '旧文案应已删除');
+
+  // 没有 stale 时不该出现这条提示
+  const clean = renderView(makeData());
+  assert.ok(!clean.includes('重启 DSH 后才生效'), '未改动时不该提示重启');
 });
 
 test('ui: 摘要只报工具数量，不报字符和 token', () => {
@@ -559,7 +581,9 @@ test('ui: CSS 采用宿主的排版刻度', () => {
   const { mod } = loadUi();
   const css = mod.__testing.CSS;
   assert.ok(css.includes('max-width:760px'));
-  assert.ok(css.includes('font-size:16px;line-height:24px'), '页面标题 16/24');
+  assert.ok(!css.includes('tw-title'), '页内标题的样式已随标题一起删除');
+  assert.ok(!css.includes('tw-intro'), '页内说明的样式已随说明一起删除');
+  assert.ok(!css.includes('tw-saving'), '节省量的样式已随 token 显示一起删除');
   assert.ok(css.includes('font-size:13px;font-weight:600'), '行名 13 w600');
   assert.ok(css.includes('font-size:11px;line-height:13px'), '副标题 11/13');
   assert.ok(css.includes('border-radius:12px'), '分组卡片圆角 12');

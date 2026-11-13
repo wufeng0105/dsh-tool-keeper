@@ -1,5 +1,5 @@
 /**
- * Tool Keeper 设置页 —— 浏览器半。
+ * 工具管理设置页 —— 浏览器半。
  *
  * 装载：window.__ModuleLoader__.load({ id, factory })
  * 数据：/tool-keeper/api 的 op = state / set / reset
@@ -41,11 +41,6 @@ window.__ModuleLoader__.load({
     var CSS = [
       '.tw{display:flex;flex-direction:column;width:100%;max-width:760px;padding:0 0 24px;box-sizing:border-box;font-family:var(--dsw-font-family);color:var(--dsw-alias-label-primary)}',
 
-      /* ── 标题行 ── */
-      '.tw-head{margin-bottom:14px}',
-      '.tw-title{margin:0;font-size:16px;line-height:24px;font-weight:500;letter-spacing:-.01em}',
-      '.tw-intro{margin:3px 0 0;max-width:44em;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}',
-
       /* ── 工具栏：三者同高、垂直居中 ── */
       '.tw-toolbar{display:flex;align-items:center;gap:8px;width:100%;min-width:0}',
       '.tw-searchWrap{position:relative;flex:1 1 0;min-width:140px;display:flex;align-items:center}',
@@ -60,7 +55,6 @@ window.__ModuleLoader__.load({
 
       /* ── 摘要 ── */
       '.tw-summary{margin:10px 0 0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;font-variant-numeric:tabular-nums}',
-      '.tw-saving{color:var(--dsw-alias-state-success-primary)}',
       '.tw-divider{height:0;border-top:1px solid var(--dsw-alias-border-l2);margin:12px 0 14px}',
 
       /* ── 分组卡片 ── */
@@ -413,13 +407,7 @@ window.__ModuleLoader__.load({
       });
 
       return h('div', { className: 'tw' },
-        /* 标题行：只有标题与说明 */
-        h('div', { className: 'tw-head' },
-          h('h2', { className: 'tw-title' }, 'Tool Keeper'),
-          h('p', { className: 'tw-intro' },
-            '决定哪些工具进入模型的上下文。关掉用不到的，让每轮请求少带一份工具定义。'),
-        ),
-
+        /* 标题行：导航里已经叫「工具管理」，这里不再重复标题与说明 */
         data.patched === false
           ? h('p', { className: 'tw-note', 'data-tone': 'bad' },
             '拦截补丁未安装：' + (data.reason || '未知原因') + '。当前配置不会生效。')
@@ -437,7 +425,7 @@ window.__ModuleLoader__.load({
         // 不放在 React state 里——否则刷新一次提示就消失，用户看到的是「已生效」。
         data.stale
           ? h('p', { className: 'tw-note', 'data-tone': 'warn' },
-            '配置已改，重启 DSH 后才生效。下面显示的是重启后才会成立的状态。')
+            '已保存。重启 DSH 后才生效——在此之前，模型仍然能看见并使用这些工具。')
           : null,
 
         /* 工具栏 */
@@ -533,9 +521,6 @@ window.__ModuleLoader__.load({
 
       if (data === null) {
         return h('div', { className: 'tw' },
-          h('div', { className: 'tw-head' },
-            h('h2', { className: 'tw-title' }, 'Tool Keeper'),
-            h('p', { className: 'tw-intro' }, '决定哪些工具进入模型的上下文。')),
           error === null
             ? h('p', { className: 'tw-status' }, '读取中…')
             : h('div', null,
@@ -652,7 +637,7 @@ window.__ModuleLoader__.load({
           // 50：排在「归档会话」(45) 之后、草稿工作室(60) 之前。
           // 不能用 60——那和 dsh-draft-studio 撞号，导航里的相对顺序会不稳定。
           order: 50,
-          label: function () { return 'Tool Keeper'; },
+          label: function () { return '工具管理'; },
           inject: function () { return {}; },
         }, Section);
       });
