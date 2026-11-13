@@ -7,7 +7,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mountApi, ROUTE_PATH } from '../api.js';
@@ -546,8 +546,7 @@ test('api: import 整份替换并留备份', async () => {
   assert.equal(saved.rewrite['mcp__x__y'], '改过的说明');
 
   // 备份必须在且内容是导入前的
-  const bak = configPath + '.bak-' + (Date.now() - parseInt(r.json.exportedAt ? 0 : 0));
-  const bakFile = (await import('node:fs')).readdirSync(dir).find(f => f.startsWith('tool-keeper.json.bak-'));
+  const bakFile = readdirSync(dir).find(f => f.startsWith('tool-keeper.json.bak-'));
   assert.ok(bakFile, '导入必须留备份');
   const bakData = JSON.parse(readFileSync(join(dir, bakFile), 'utf8'));
   assert.equal(bakData.tools['mcp__a__b'], 'drop', '备份应是导入前的内容');

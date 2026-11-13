@@ -16,7 +16,7 @@
  * - `rewrite`—— 注册，但 description 换成用户写的文本。
  * - `keep`   —— 原样放行。
  *
- * ## 优先级（见 docs/DESIGN.md「优先级与归一化」）
+ * ## 优先级（DESIGN「规则冲突时听谁的」）
  *
  *   单工具规则  >  服务器白名单  >  服务器总开关
  *
@@ -84,7 +84,7 @@ export function normalizeConfig(raw) {
     return { rules: empty, problems };
   }
 
-  // ---- enabled: 总开关（DESIGN「R4 可靠性」）。放这里而不是插件 Config：
+  // ---- enabled: 总开关（DESIGN「七、可靠性与已知风险」）。放这里而不是插件 Config：
   //      插件 Config 要改 cordis.patch.yml + 重启，不算「一键」。
   if (raw.enabled !== undefined) {
     if (typeof raw.enabled !== 'boolean') {
@@ -458,7 +458,7 @@ export function diagnose(rules, seenNames, knownServers) {
   const seen = new Set(seenNames || []);
   const servers = new Set(knownServers || []);
 
-  // 三态判定（见 docs/DESIGN.md「A8 的三态」）
+  // 三态判定（TESTING「A8 的三态」）
   const configuredServers = new Set([
     ...rules.disabledServers,
     ...rules.serverKeep.keys(),

@@ -646,7 +646,7 @@ window.__ModuleLoader__.load({
       function onReset() {
         setBusy(true); setError(null);
         call({ op: 'reset' }).then(function () {
- return call({ op: 'state' });
+          return call({ op: 'state' });
         }).then(function (next) { setData(next); })
           .catch(function (e) { setError(e.message); })
           .then(function () { setBusy(false); });

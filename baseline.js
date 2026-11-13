@@ -50,7 +50,7 @@ export function createBaselineConfig(options = {}) {
       'Tool Keeper 出厂状态：不管理任何工具，全部原样。',
       '要关工具，用 servers / tools 填写；要改说明，用 rewrite 填写。',
       '也可以用模型工具 tool-keeper（action=list 先看有哪些，再决定关哪个）。',
-      '被 PROTECTED_TOOLS 保护的基础工具（read/write/edit/pwsh 等）任何配置都关不掉。',
+      '被 PROTECTED_TOOLS 保护的受保护工具（read/write/edit/pwsh 等）任何配置都关不掉。',
       '全部放行：把 enabled 设为 false。',
     ],
     enabled,
