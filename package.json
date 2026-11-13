@@ -1,11 +1,16 @@
 {
   "name": "@local/dsh-toolwarden",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Toolwarden 工具守卫 — 决定哪些工具进入模型上下文，并能重写工具与参数说明。",
   "exports": { ".": "./index.js" },
-  "files": ["index.js", "rules.js", "tool.js", "baseline.js", "cordis.patch.yml", "README.md"],
+  "files": [
+    "index.js", "rules.js", "tool.js", "baseline.js", "api.js",
+    "ui",
+    "cordis.patch.yml",
+    "README.md"
+  ],
   "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
   "engines": { "node": ">=20.3.0", "dsh": ">=0.2.2-rc.2 <0.3.0-0" },
   "scripts": {

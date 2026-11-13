@@ -32,6 +32,7 @@ import {
 } from './rules.js';
 import { registerTool } from './tool.js';
 import { createBaselineConfig } from './baseline.js';
+import { mountApi } from './api.js';
 
 export const name = 'dsh-toolwarden';
 
@@ -258,6 +259,10 @@ export function apply(ctx, config) {
     log,
   });
 
+  // 设置页 API 路由。webServer 走运行期可选注入——不能写进 inject，
+  // headless 下没有这个服务，写进去插件会永远 pending。
+  const offApi = mountApi(ctx, { configPath: path, catalog, snapshot, log });
+
   ctx.effect(() => () => {
     patch.restore();
     try {
@@ -265,7 +270,12 @@ export function apply(ctx, config) {
     } catch {
       // 工具可能已随作用域销毁
     }
-  }, 'toolwarden: restore register and tool');
+    try {
+      offApi();
+    } catch {
+      // 路由可能已随作用域销毁
+    }
+  }, 'toolwarden: restore register, tool and api');
 
   log.info(
     `patched; config=${path}${knownServers ? '; servers=' + [...knownServers].join(',') : '; servers=unknown'}`
