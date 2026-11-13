@@ -72,10 +72,9 @@ window.__ModuleLoader__.load({
       '.tw-groupToggle:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
 
       /* ── 列表与行 ── */
-      '.tw-list{display:flex;flex-direction:column}',
-      '.tw-item{display:flex;flex-direction:column}',
-      /* 行与行之间用发丝线隔开：没有分隔线的长条列表看不出每条边界 */
-      '.tw-item+.tw-item{border-top:.5px solid var(--dsw-alias-border-l2)}',
+      '.tw-list{display:flex;flex-direction:column;gap:8px}',
+      /* 每个工具自己是一个带边框圆角的盒子（用户指定：要包裹感，不是分隔线） */
+      '.tw-item{display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm,8px);overflow:hidden}',
       '.tw-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:44px;padding:6px 10px;transition:background 150ms ease}',
       '.tw-row:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.tw-icon{flex:none;width:34px;height:34px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-1);display:flex;align-items:center;justify-content:center;position:relative}',
@@ -100,8 +99,8 @@ window.__ModuleLoader__.load({
       '.tw-switch:focus-visible .tw-track{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
       '.tw-lock{flex:none;font-size:11px;line-height:13px;color:var(--dsw-alias-label-tertiary);white-space:nowrap}',
 
-      /* ── 展开：左右两栏等高 ── */
-      '.tw-detail{display:flex;flex-direction:column;gap:10px;padding:2px 10px 14px 54px;border-top:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);animation:tw-detail-in 180ms cubic-bezier(.2,.7,.3,1) both}',
+      /* ── 展开：左右两栏等高，画在同一个盒子里 ── */
+      '.tw-detail{display:flex;flex-direction:column;gap:10px;padding:2px 10px 12px 54px;border-top:.5px solid var(--dsw-alias-border-l2);animation:tw-detail-in 180ms cubic-bezier(.2,.7,.3,1) both}',
       '.tw-fields{display:grid;grid-template-columns:1fr 1fr;gap:12px;min-width:0}',
       '.tw-field{display:flex;flex-direction:column;gap:6px;min-width:0}',
       '.tw-fieldLabel{font-size:11px;line-height:13px;color:var(--dsw-alias-label-tertiary)}',
