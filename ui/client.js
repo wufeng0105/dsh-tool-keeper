@@ -610,7 +610,9 @@ window.__ModuleLoader__.load({
         return ctx.slots.register({
           name: 'settings.section',
           id: 'toolwarden',
-          order: 60,
+          // 50：排在「归档会话」(45) 之后、草稿工作室(60) 之前。
+          // 不能用 60——那和 dsh-draft-studio 撞号，导航里的相对顺序会不稳定。
+          order: 50,
           label: function () { return '工具守卫'; },
           inject: function () { return {}; },
         }, Section);

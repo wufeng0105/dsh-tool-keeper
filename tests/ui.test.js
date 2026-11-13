@@ -109,6 +109,25 @@ test('ui: apply 注册到 settings.section，id=toolwarden', () => {
   assert.equal(registered.opts.name, 'settings.section');
   assert.equal(registered.opts.id, 'toolwarden');
   assert.equal(registered.opts.label(), '工具守卫');
+  assert.equal(typeof registered.comp, 'function');
+});
+
+test('ui: 导航排序用 50，不与已知插件撞号', () => {
+  const { mod } = loadUi();
+  let order = null;
+  mod.apply({
+    effect(fn) { fn(); },
+    slots: {
+      inject(_n, cb) { cb(); },
+      register(opts) { order = opts.order; },
+    },
+  });
+  assert.equal(order, 50);
+  // 宿主现有条目的 order：general 0 / models 10 / plugins 15 / agent-presets 20
+  // enhance 30 / market 40 / archive-manager 45 / draft-studio 60 / xdpool 440
+  // 50 落在 archive-manager 与 draft-studio 之间，且不与任何一次撞号
+  const taken = [0, 10, 15, 20, 30, 40, 45, 60, 440];
+  assert.ok(!taken.includes(order), '不能与任何现有条目同号，否则导航相对顺序不稳定');
 });
 
 // ─────────────────────────────────────────────
