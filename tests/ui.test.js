@@ -152,7 +152,8 @@ test('ui: 分组头部有标题与计数', () => {
   const html = renderView(makeData());
   assert.ok(html.includes('内置工具'));
   assert.ok(html.includes('MCP · tinyfish'));
-  assert.ok(/3 个 · ≈[\d,]+ tokens/.test(html), '内置工具组应显示计数');
+  assert.ok(/3 个/.test(html), '内置工具组应显示工具数量');
+  assert.ok(!/tokens/.test(html), '不显示 token');
 });
 
 // ─────────────────────────────────────────────
@@ -332,10 +333,12 @@ test('ui: 标题行只有标题与说明，不挂状态标签和统计块', () =
   assert.ok(!html.includes('tw-stat'), '不应有统计块');
 });
 
-test('ui: 摘要是一行小字，含总数与 token', () => {
+test('ui: 摘要只报工具数量，不报字符和 token', () => {
   const html = renderView(makeData());
   assert.ok(html.includes('tw-summary'));
-  assert.ok(/共 5 个工具 · ≈[\d,]+ tokens/.test(html));
+  assert.ok(/共 5 个工具/.test(html));
+  assert.ok(!/tokens/.test(html), '不显示 token');
+  assert.ok(!/字符/.test(html), '不显示字符数');
 });
 
 // ─────────────────────────────────────────────
@@ -372,17 +375,17 @@ test('ui: 开关决策不改原对象', () => {
 // ─────────────────────────────────────────────
 // 有隐藏时才在摘要里提节省
 // ─────────────────────────────────────────────
-test('ui: 有隐藏时才在摘要里提节省', () => {
+test('ui: 有隐藏时才在摘要里提已隐藏数', () => {
   const none = renderView(makeData());
-  assert.ok(!none.includes('每轮省'), '没有隐藏时不该提节省');
+  assert.ok(!none.includes('已隐藏'), '没有隐藏时不该提已隐藏');
 
   const data = makeData();
   // 状态读的是 effective（引擎判定），不是 rules.tools
   data.groups[1].roles[1].effective = 'drop';
   data.groups[1].roles[1].source = 'tool';
   const some = renderView(data);
-  assert.ok(some.includes('每轮省'), '有隐藏时应提节省');
-  assert.ok(/已隐藏 1 个/.test(some));
+  assert.ok(/已隐藏 1 个/.test(some), '有隐藏时应报已隐藏数');
+  assert.ok(!/每轮省/.test(some), '不再算节省，因为字符和 token 都不显示了');
 });
 
 // ─────────────────────────────────────────────
@@ -617,12 +620,6 @@ test('ui: 有焦点环与动效降级', () => {
 // ─────────────────────────────────────────────
 // 数值口径
 // ─────────────────────────────────────────────
-test('ui: token 估算口径为字符 ÷ 3.5', () => {
-  const { mod } = loadUi();
-  assert.equal(mod.__testing.estimateTokens(3500), 1000);
-  assert.equal(mod.__testing.estimateTokens(10609), 3031);
-});
-
 test('ui: 千分位格式化', () => {
   const { mod } = loadUi();
   assert.equal(mod.__testing.num(79505), '79,505');

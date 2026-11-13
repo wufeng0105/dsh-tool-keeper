@@ -167,7 +167,6 @@ window.__ModuleLoader__.load({
       });
     }
 
-    function estimateTokens(chars) { return Math.round(chars / 3.5); }
     function num(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
 
     /**
@@ -259,9 +258,8 @@ window.__ModuleLoader__.load({
             onClick: props.onExpand,
           }, role.name),
           h('span', { className: 'tw-meta' },
-            num(role.chars) + ' 字符 · ≈' + num(estimateTokens(role.chars)) + ' tokens',
-            props.rewritten ? ' · 已改写' : null,
-            fromServer ? ' · 服务器规则关闭' : null,
+            props.rewritten ? '已改写' : null,
+            fromServer ? '服务器规则关闭' : null,
           ),
         ),
         role.protected
@@ -318,7 +316,6 @@ window.__ModuleLoader__.load({
       var roles = section.roles;
       var open = props.open !== false;
       var hiddenCount = roles.filter(function (r) { return r.effective === 'drop'; }).length;
-      var chars = roles.reduce(function (n, r) { return n + r.chars; }, 0);
       var isMcp = section.group !== 'core';
 
       return h('section', { className: 'tw-group' },
@@ -336,8 +333,7 @@ window.__ModuleLoader__.load({
           ),
           h('div', { className: 'tw-groupMeta' },
             h('span', { className: 'tw-count' },
-              roles.length + ' 个 · ≈' + num(estimateTokens(chars)) + ' tokens' +
-              (hiddenCount > 0 ? ' · ' + hiddenCount + ' 已隐藏' : '')),
+              roles.length + ' 个' + (hiddenCount > 0 ? ' · ' + hiddenCount + ' 已隐藏' : '')),
           ),
         ),
         open
@@ -395,9 +391,7 @@ window.__ModuleLoader__.load({
       // 从 tools 推会漏掉服务器白名单与总开关，把被丢掉的工具显示成「开」。
       var isHidden = function (role) { return role.effective === 'drop'; };
 
-      var chars = all.reduce(function (n, r) { return n + r.chars; }, 0);
       var hidden = all.filter(isHidden);
-      var savedChars = hidden.reduce(function (n, r) { return n + r.chars; }, 0);
 
       var groups = data.groups.map(function (g) {
         if (query === '') return g;
@@ -412,7 +406,6 @@ window.__ModuleLoader__.load({
       // 搜索时还说「共 105 个」而屏幕上只有 2 行，就是自相矛盾。
       var visible = [];
       groups.forEach(function (g) { visible = visible.concat(g.roles); });
-      var visibleChars = visible.reduce(function (n, r) { return n + r.chars; }, 0);
       var visibleHidden = visible.filter(isHidden);
 
       var allCollapsed = groups.length > 0 && groups.every(function (g) {
@@ -473,15 +466,12 @@ window.__ModuleLoader__.load({
           ),
         ),
 
-        /* 摘要：描述屏幕上的这些工具。搜索时跟着变，否则会和列表自相矛盾。 */
+        /* 摘要：只报工具数量。搜索时跟着变，否则会和列表自相矛盾。 */
         h('p', { className: 'tw-summary' },
-          (query === '' ? '共 ' : '筛选出 ') + visible.length + ' 个工具 · ≈' +
-          num(estimateTokens(visibleChars)) + ' tokens' +
+          (query === '' ? '共 ' : '筛选出 ') + visible.length + ' 个工具' +
           (query !== '' ? '（全部 ' + all.length + ' 个）' : ''),
           visibleHidden.length > 0
-            ? h('span', { className: 'tw-saving' },
-              ' · 已隐藏 ' + visibleHidden.length + ' 个，每轮省 ≈' +
-              num(estimateTokens(visibleHidden.reduce(function (n, r) { return n + r.chars; }, 0))) + ' tokens')
+            ? ' · 已隐藏 ' + visibleHidden.length + ' 个'
             : null,
         ),
         h('div', { className: 'tw-divider' }),
@@ -671,7 +661,6 @@ window.__ModuleLoader__.load({
     exports.apply = apply;
     exports.inject = ['slots'];
     exports.__testing = {
-      estimateTokens: estimateTokens,
       num: num,
       nextToolsAfterToggle: nextToolsAfterToggle,
       View: ToolKeeperView,
