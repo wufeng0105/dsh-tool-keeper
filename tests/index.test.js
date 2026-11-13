@@ -201,7 +201,7 @@ test('index: enabled=false 时诊断为空（没有规则生效，报错是噪�
 });
 
 // ─────────────────────────────────────────────
-// 失败可见（D6）
+// 失败可见（DESIGN「已知风险与退路」的统一兜底）
 // ─────────────────────────────────────────────
 test('index: tools 服务缺失时报 patched:false 且不抛', () => {
   const { dir, configPath } = makeDir({ enabled: true, servers: {}, tools: {}, rewrite: {} });

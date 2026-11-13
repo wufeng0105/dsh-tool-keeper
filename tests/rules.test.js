@@ -191,7 +191,7 @@ test('applyToDefinition: rewrite 只换 description，其余字段保持引用',
 });
 
 // ─────────────────────────────────────────────
-// R2.2 参数说明改写
+// 参数说明改写
 // ─────────────────────────────────────────────
 const paramFixture = () => ({
   type: 'object',
@@ -212,7 +212,7 @@ test('rewriteParameterDescriptions: 替换指定参数的说明', () => {
   assert.equal(params.properties.ttl.description, 'Caller freshness tolerance in seconds', '原对象不得被修改');
 });
 
-test('rewriteParameterDescriptions: 结构字段一个不动（D2）', () => {
+test('rewriteParameterDescriptions: 结构字段一个不动（DESIGN「只改文字，不碰结构」）', () => {
   const params = paramFixture();
   const { parameters } = rewriteParameterDescriptions(params, new Map([['urls', 'URL 列表']]));
   assert.equal(parameters.properties.urls.type, 'array');

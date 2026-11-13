@@ -15,11 +15,11 @@
  *
  * ## 三条硬约束
  *
- * 1. **绝不中断注册链**（R4.5）。任何本插件自身的错误都必须被吞掉并记为诊断，
+ * 1. **绝不中断注册链**（DESIGN「R4 可靠性」）。任何本插件自身的错误都必须被吞掉并记为诊断，
  *    然后**原样放行**。一个坏配置不能让工具注册失败。
- * 2. **失败必须可见**（D6）。补丁装不上时要报出来，不能静默失效——
+ * 2. **失败必须可见**（DESIGN「已知风险与退路」的统一兜底）。补丁装不上时要报出来，不能静默失效——
  *    `tool-mask` 就是静默失效的典型。
- * 3. **冷启动即生效**（R4.1）。补丁装在 `apply` 期间，早于任何 MCP 连接。
+ * 3. **冷启动即生效**（DESIGN「R4 可靠性」；这是 tool-mask 栽的地方）。补丁装在 `apply` 期间，早于任何 MCP 连接。
  *
  * @module @local/dsh-tool-keeper
  */
@@ -74,7 +74,7 @@ function readConfig(path) {
   try {
     return { raw: JSON.parse(text), error: undefined, text };
   } catch (error) {
-    // 半截 JSON / 手改写坏：按空配置运行，绝不中断注册（R4.5）
+    // 半截 JSON / 手改写坏：按空配置运行，绝不中断注册（DESIGN「R4 可靠性」）
     return { raw: undefined, error: `invalid JSON in ${path}: ${String(error?.message ?? error)}`, text };
   }
 }
@@ -170,14 +170,14 @@ export function apply(ctx, config) {
   const loadedHash = hashText(configText);
 
   if (readError !== undefined) {
-    // R4.5：配置坏了按全放行跑，但必须报出来
+    // 配置坏了按全放行跑，但必须报出来（DESIGN「R4 可靠性」）
     log.warn(readError + ' — running with an empty config (no tool filtered)');
   }
   for (const problem of problems) log.warn('config: ' + problem);
 
   const disabled = rules.enabled === false;
   if (disabled) {
-    // R4.4 总开关：读 tool-keeper.json 的 enabled，不依赖插件 Config（那要改 YAML + 重启）
+    // 总开关：读 tool-keeper.json 的 enabled（DESIGN「R4 可靠性」与「已知风险与退路」），不依赖插件 Config（那要改 YAML + 重启）
     //
     // 注意：禁用时**仍然**注册模型工具与设置页 API。它们是唯一的恢复入口——
     // 早先的写法在这里直接 return，于是关掉总开关之后重启，工具和 API 一起消失，
@@ -207,7 +207,7 @@ export function apply(ctx, config) {
     if (disabled) return []; // 禁用时没有任何规则生效，报诊断只会是噪音
     try {
       const base = diagnose(rules, [...seen], knownServers ?? new Set());
-      // R2.2 的参数名不存在也要报出来
+      // 改写的参数名不存在也要报出来（DESIGN「只改文字，不碰结构」）
       for (const [tool, params] of missingParams) {
         for (const p of params) {
           base.push({ kind: 'warning', target: `rewrite.${tool}.properties.${p}`, message: 'parameter not found on this tool' });
@@ -299,13 +299,13 @@ function installPatch(ctx, rules, knownServers, seen, catalog, missingParams, lo
   const wrapped = function register(definition, options) {
     let verdict;
     try {
-      // 先留原文（R2.4 / R3.3 / R3.4 的共同前置），必须在改写之前
+      // 先留原文（一键还原、界面展开编辑的共同前置），必须在改写之前
       catalog.record(definition);
       const nm = definition === null || definition === undefined ? undefined : definition.name;
       if (typeof nm === 'string' && nm !== '') seen.add(nm);
       verdict = applyToDefinition(definition, rules, knownServers);
     } catch (error) {
-      // 自己的判定出错时绝不阻断注册（R4.5）
+      // 自己的判定出错时绝不阻断注册（DESIGN「R4 可靠性」）
       log.warn('decision failed, passing the tool through unchanged: ' + String(error?.message ?? error));
       return original.call(this, definition, options);
     }

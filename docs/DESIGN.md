@@ -129,6 +129,19 @@ return { name, description, parameters: inputSchema, output: ... }
 
 ## 六、被推翻的路线（最有价值的部分）
 
+### `toolgate` 的做法：`restrict()` + `tools/change` 事件同步
+
+同作者上一代方案（盘上 `dsh-toolgate/`，未装进 profile）。思路：用 `restrict({deny})`
+摘工具，MCP 异步注册时监听 `tools/change` 事件重新计算 deny 集合。
+
+教训写在它自己的源码注释里：`restrict()` 读的是**服务自己的 ctx**（`scopeOf(this.ctx)`），
+不是调用者的——作用域挂错位置就静默不生效。要让它工作，插件必须挂成 agent 作用域的
+子插件，于是「配置在哪、作用域在哪、UI 怎么连」三件事互相牵扯，装一次调一次。
+另外它同样**改不了说明**——restrict 只能删。
+
+这套「来回抖动」的第一手教训是本项目选择「注册期拦截」的直接原因之一：
+拦截发生在每个工具自己的注册调用里，作用域天然正确，不存在挂错位置的问题。
+
 ### `tool-mask` 的做法：加载时算一次黑名单
 
 同类实现 `tool-mask` 用的是这个思路，它有一个致命问题：

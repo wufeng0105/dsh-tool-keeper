@@ -84,7 +84,7 @@ export function normalizeConfig(raw) {
     return { rules: empty, problems };
   }
 
-  // ---- enabled: 总开关（R4.4）。放这里而不是插件 Config：
+  // ---- enabled: 总开关（DESIGN「R4 可靠性」）。放这里而不是插件 Config：
   //      插件 Config 要改 cordis.patch.yml + 重启，不算「一键」。
   if (raw.enabled !== undefined) {
     if (typeof raw.enabled !== 'boolean') {
@@ -152,7 +152,7 @@ export function normalizeConfig(raw) {
   }
 
   // ---- rewrite: { fullName: 'new description' } ----
-  // 值可以是字符串（改工具说明），也可以是对象（改参数说明，R2.2）
+  // 值可以是字符串（改工具说明），也可以是对象（改参数说明）
   if (raw.rewrite !== undefined) {
     if (raw.rewrite === null || typeof raw.rewrite !== 'object' || Array.isArray(raw.rewrite)) {
       problems.push('rewrite must be an object, got ' + describe(raw.rewrite));
@@ -167,7 +167,7 @@ export function normalizeConfig(raw) {
           empty.rewrites.set(name, { description: value, properties: new Map() });
           continue;
         }
-        // R2.2：对象形态 { description?: string, properties?: { 参数名: string } }
+        // 对象形态 { description?: string, properties?: { 参数名: string } }
         if (value === null || typeof value !== 'object' || Array.isArray(value)) {
           problems.push(`rewrite.${name} must be a string or an object, got ` + describe(value));
           continue;
@@ -215,13 +215,6 @@ function describe(value) {
   return String(value);
 }
 
-/**
- * 原型链上的危险键。
- *
- * 允许它们当配置键有两个后果：`servers.__proto__ = {...}` 会走到原型 setter，
- * 结果「报成功但什么也没写」；`tools.__proto__ = 'drop'` 会落盘成一个看着正常
- * 却永远不生效的条目。两种都是谎报，所以在解析阶段直接拒绝。
- */
 /**
  * 原型链上的危险键。
  *
@@ -293,9 +286,9 @@ export function decide(name, rules, knownServers) {
 }
 
 /**
- * 在 parameters 的深拷贝上替换指定参数的 description（R2.2）。
+ * 在 parameters 的深拷贝上替换指定参数的 description。
  *
- * 只改 `properties.<param>.description`，不碰 type / required / enum / 默认值（D2）。
+ * 只改 `properties.<param>.description`，不碰 type / required / enum / 默认值（DESIGN「只改文字，不碰结构」）。
  * 不存在该参数时跳过并返回未命中的参数名，供诊断使用。
  *
  * @param parameters - 原始 parameters 对象
@@ -350,11 +343,11 @@ export function applyToDefinition(definition, rules, knownServers) {
     let next = definition;
     const missingParams = [];
 
-    // R2.1 工具说明
+    // 工具说明
     if (typeof entry.description === 'string') {
       next = { ...next, description: entry.description };
     }
-    // R2.2 参数说明
+    // 参数说明
     if (entry.properties !== undefined && entry.properties.size > 0) {
       const result = rewriteParameterDescriptions(next.parameters, entry.properties);
       if (result.parameters !== next.parameters) {
@@ -376,9 +369,9 @@ export function applyToDefinition(definition, rules, knownServers) {
  * 工具目录：注册时留存每个工具的原始文本与体量。
  *
  * 没有它就做不到三件事（审计指出）：
- * - R2.4「一键还原」—— 没有原文，只能删配置 + 重启
- * - R3.3「展开看到并编辑」—— 界面要显示「现在是什么」和「原来是怎样」
- * - R3.4「token 占用」—— 没有原文算不出省了多少
+ * - 「一键还原」—— 没有原文，只能删配置 + 重启
+ * - 界面展开编辑—— 要显示「现在是什么」和「原来是怎样」
+ * - 「改了省了多少」—— 没有原文算不出（原用途；token 显示已于 0.3.6 移除，还原与编辑仍在用）
  *
  * @module dsh-tool-keeper/catalog
  */
