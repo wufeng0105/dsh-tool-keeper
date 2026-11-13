@@ -48,7 +48,7 @@
 | **H3** | `readKnownServers` 的手写正则只认一种 YAML 写法。审计实测：引号包裹、服务器名带点、4 空格缩进、行尾注释、流式对象**五种全部失效**。失效时该服务器的规则静默不生效，而 `computeDiagnostics` 还会给每个已配置服务器报「server not found」硬错误 | 要修就得引入 YAML 解析或改数据源（读 mcp-manager 的 Config）。这是**独立一块工作**，混在这次里会让改动面失控。已列为下一步第一优先 |
 | **H4** | 三类静默失效无诊断：对保护工具配改写、对被丢弃工具配改写、`tool.js` 写配置完全不校验（导入了 `normalizeConfig`/`diagnose` 却一个都没用） | 同上，属诊断体系的一部分，跟 H3 一起做 |
 | **S1** | 双重 `apply` 后 `restore()` 只还原一层，且会覆盖后装插件的补丁（restore 无栈语义） | 触发条件是同一插件被两条 patch 行加载或热重载。真实概率低，改动涉及补丁协议，留待有实际复现时再动 |
-| **S5** | 页面没用到一半的 state 字段：`data.enabled`、`rules.servers`、`disabledServers`、`descChars` 零引用；`stats.paramsRewritten` 初始化后从未自增，是死统计 | 死字段无害，但会误导后来读代码的人。清理由下一次改动顺带做 |
+| **S5** | 页面没用到一半的 state 字段：`data.enabled`、`rules.servers`、`disabledServers`、`descChars` 零引用；`stats.paramsRewritten` 初始化后从未自增，是死统计 | **已部分处理**：`stats` 整套删除（见 0.3.3）。其余死字段仍留着 |
 | **S10** | REQUIREMENTS 有 5 处「说的和做的」不符 | 已改成「实现状态与偏离」表，见 [REQUIREMENTS.md](./REQUIREMENTS.md) 末尾。**不静默改规格**——规格是决策记录，偏离要留痕 |
 | **S12 余项** | `tool.js` 的 `enable`/`server` 两条路径仍可能写出 API 会拒绝的配置 | 与 H4 同源，一起补校验 |
 | **S13** | 同源校验信任客户端 `Host` 头：`Origin: https://evil.example` + `Host: evil.example` → 200 | 浏览器无法伪造 `Host`，浏览器侧不可利用。改成固定白名单属加固，非阻塞 |

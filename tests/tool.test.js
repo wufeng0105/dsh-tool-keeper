@@ -42,7 +42,6 @@ function makeDeps(configPath) {
   catalog.record({ name: 'read', description: 'read desc', parameters: {} });
   const snapshot = () => ({
     patched: true, enabled: true, configPath,
-    stats: { total: 2, dropped: 0, rewritten: 0, kept: 2 },
     diagnostics: [], problems: [],
   });
   const log = { info() {}, warn() {} };

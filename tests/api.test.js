@@ -66,7 +66,6 @@ function makeDeps(configPath) {
     catalog,
     snapshot: () => ({
       patched: true, enabled: true, configPath,
-      stats: { total: 2, dropped: 0, rewritten: 0, kept: 2 },
       problems: [], diagnostics: [],
     }),
     log: { info() {}, warn() {} },
@@ -318,7 +317,7 @@ test('api: 磁盘配置与启动指纹不同时报 stale=true', async () => {
     snapshot: () => ({
       patched: true, enabled: true, configPath,
       loadedHash: 'deadbeefdeadbeef', // 与磁盘内容不可能相同
-      stats: {}, problems: [], diagnostics: [],
+      problems: [], diagnostics: [],
     }),
     log: { info() {}, warn() {} },
   };
@@ -346,7 +345,7 @@ test('api: 没有启动指纹时 stale=false（不瞎报）', async () => {
     catalog: new ToolCatalog(),
     snapshot: () => ({
       patched: true, configPath, loadedHash: undefined,
-      stats: {}, problems: [], diagnostics: [],
+      problems: [], diagnostics: [],
     }),
     log: { info() {}, warn() {} },
   });

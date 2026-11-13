@@ -174,7 +174,6 @@ export function mountApi(ctx, deps) {
             // true = 磁盘上的配置与启动时加载的不同，即「改了还没重启」。
             // 此时页面上的隐藏数/节省量都是「重启后才会成立」的数字。
             stale,
-            stats: s.stats,
             problems: [...problems, ...s.problems],
             diagnostics: s.diagnostics,
             groups: groups.map(([group, entries]) => ({

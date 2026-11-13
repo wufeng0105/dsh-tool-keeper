@@ -145,7 +145,6 @@ export function registerTool(ctx, options) {
           patched: s.patched,
           enabled: s.enabled,
           configPath: s.configPath,
-          stats: s.stats,
           toolCount: catalog.size(),
           diagnostics: s.diagnostics,
           problems: s.problems,

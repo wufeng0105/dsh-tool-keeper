@@ -269,21 +269,15 @@ test('index: 配置损坏时按全放行跑，并报出来', () => {
 // ─────────────────────────────────────────────
 // 统计口径
 // ─────────────────────────────────────────────
-test('index: 统计里 dropped/kept 不混', () => {
-  const { dir, configPath } = makeDir({
-    enabled: true, servers: {}, tools: { 'mcp__x__y': 'drop' }, rewrite: {},
-  });
+test('index: 状态里不再有统计计数', () => {
+  // 这些计数原本数的是 register() 调用次数，与实际工具数不一致
+  // （实测 stats.total=172 而真实工具 105 个），没有消费者，还自相矛盾，已删除。
+  const { dir, configPath } = makeDir({ enabled: true, servers: {}, tools: {}, rewrite: {} });
   const { ctx, state } = makeCtx();
   apply(ctx, { configPath });
-
-  ctx.tools.register({ name: 'mcp__x__keep', description: 'd', parameters: {} });
-  ctx.tools.register({ name: 'mcp__x__y', description: 'd', parameters: {} });
-
   const status = readStatus(state);
-  // total 里还包含插件自己的 toolwarden 工具（它也走同一个 register），所以不钉死总数
-  assert.equal(status.stats.dropped, 1, '被丢的应恰好 1 个');
-  assert.equal(status.stats.kept, 2, '放行的 2 个（含 toolwarden 工具）');
-  assert.equal(status.stats.total, status.stats.dropped + status.stats.kept,
-    'total 必须等于 dropped + kept');
+  assert.equal(status.stats, undefined, '不要维护没人读、又不准的计数');
+  // 真实的工具清单由目录提供，不靠计数
+  assert.ok(Array.isArray(status.groups), '工具清单从目录来');
   rmSync(dir, { recursive: true, force: true });
 });

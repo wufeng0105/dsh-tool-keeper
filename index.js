@@ -188,7 +188,6 @@ export function apply(ctx, config) {
   const knownServers = disabled ? undefined : readKnownServers(settings);
   const seen = new Set();
   const catalog = new ToolCatalog();
-  const stats = { total: 0, dropped: 0, rewritten: 0, kept: 0, paramsRewritten: 0 };
   const missingParams = new Map(); // toolName -> string[]
 
   /**
@@ -197,7 +196,7 @@ export function apply(ctx, config) {
    */
   const patch = disabled
     ? { patched: false, reason: 'disabled in config', restore: () => {} }
-    : installPatch(ctx, rules, knownServers, seen, stats, catalog, missingParams, log);
+    : installPatch(ctx, rules, knownServers, seen, catalog, missingParams, log);
 
   if (!disabled && !patch.patched) {
     log.warn('could not install the registration patch: ' + patch.reason);
@@ -225,7 +224,6 @@ export function apply(ctx, config) {
   const snapshot = () => ({
     patched: patch.patched,
     reason: patch.reason,
-    stats: { ...stats },
     problems: [...problems, readError].filter(Boolean),
     diagnostics: computeDiagnostics(),
     configPath: path,
@@ -279,7 +277,7 @@ export function apply(ctx, config) {
 }
 
 /** 装 register 补丁。任何异常都返回 patched:false 而不是抛出。 */
-function installPatch(ctx, rules, knownServers, seen, stats, catalog, missingParams, log) {
+function installPatch(ctx, rules, knownServers, seen, catalog, missingParams, log) {
   let underlying;
   let original;
   let hadOwn;
@@ -299,7 +297,6 @@ function installPatch(ctx, rules, knownServers, seen, stats, catalog, missingPar
   }
 
   const wrapped = function register(definition, options) {
-    stats.total += 1;
     let verdict;
     try {
       // 先留原文（R2.4 / R3.3 / R3.4 的共同前置），必须在改写之前
@@ -313,20 +310,16 @@ function installPatch(ctx, rules, knownServers, seen, stats, catalog, missingPar
       return original.call(this, definition, options);
     }
     if (verdict.drop) {
-      stats.dropped += 1;
       // 不注册：返回一个无害的 disposer，因为调用方会在下一轮同步时调用它
       return () => {};
     }
     if (verdict.definition !== definition) {
-      stats.rewritten += 1;
       if (verdict.missingParams !== undefined) {
         const nm = definition === null || definition === undefined ? undefined : definition.name;
         if (typeof nm === 'string') {
           missingParams.set(nm, verdict.missingParams);
         }
       }
-    } else {
-      stats.kept += 1;
     }
     return original.call(this, verdict.definition, options);
   };
