@@ -1,8 +1,8 @@
 {
   "name": "dsh-tool-keeper",
-  "version": "0.3.17",
+  "version": "0.3.18",
   "type": "module",
-  "description": "Decide which tools reach the model context, and rewrite their descriptions.",
+  "description": "AI re-reads every tool's manual on every reply. Hide the ones you never use, and rewrite the rest.",
   "license": "MIT",
   "repository": {
     "type": "git",
