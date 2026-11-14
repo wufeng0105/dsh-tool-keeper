@@ -7,7 +7,7 @@
 授权的查询方式是 `cordis_inspect_query`（权威源），文档副本在 plugin-kit 包的 `host-skills/dsh-doc/`。
 逐条触点的清单与复检方法见 `touchpoints.json`，rc.3 的签名快照见 `host-snapshot.json`。
 
-### 怎么查——以及一条踩过的坑
+### 怎么查
 
 `cordis_inspect_query` 的 `input` 传参**是有效的**，两种查法都能用：
 
@@ -19,13 +19,9 @@
 { platform: 'client', provider: 'Slots', method: 'listSubTree', input: { root: 'settings.section' } }
 ```
 
-> **坑**：2026-11-14 曾把「精确查询失败」记成宿主的限制（写成「input 传参一律被拒收、
-> occupants 不返回」），并据此把设置页 slot 那条判成 UNVERIFIABLE、降级用 `plugin_manager`
-> 间接验证。**实际是查询用法写错了**——换对 provider 与 input 之后，两条都能直接查，
-> occupants 也是完整的（`{id:'tool-keeper', order:50, active:true}` 一眼可见）。
->
-> 教训：**判不了的时候，先怀疑自己的查法，别急着写「宿主不支持」。**
-> 一句错误的「宿主限制」会污染整条证据链，还会让后来人放弃机判改去手工点点点。
+> **教训**：判不了的时候，先怀疑自己的查法，别急着写「宿主不支持」。
+> 「精确查询失败」曾被误记成宿主限制，实际是查询用法写错了——一句错误的
+> 「宿主限制」会污染整条证据链，还会让后来人放弃机判改去手工点点点。
 
 ---
 
@@ -108,7 +104,7 @@ ctx.slots.inject('settings.section', function () {
 440  xdpool
 ```
 
-本插件取 `50`。原先是 `60`，跟 `dsh-draft-studio` 撞了，改掉的。
+本插件取 `50`，与现有条目无一撞号。
 
 ---
 
@@ -130,8 +126,8 @@ ctx.inject(['webServer'], (inner) => {
 | 没有 `webServer` 时怎么办 | 检查 `typeof web.register === 'function'`，没有就只记日志，不影响插件其余功能 |
 | 未知路径返回什么 | **405**（不是 404）。所以「405」不代表路由存在 |
 
-最后一条踩过坑：验证改名时探测旧路由得到 405，一度以为是残留。
-拿一个明确不存在的路径对照，同样返回 405，才确认是宿主的默认响应。
+最后一条是宿主的默认响应：**未知路径返回 405 而不是 404**，所以「405」不代表路由存在，
+验证时要拿一个明确不存在的路径做对照。
 
 ---
 

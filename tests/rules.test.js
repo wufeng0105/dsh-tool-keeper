@@ -120,13 +120,21 @@ test('decide: 服务器白名单生效', () => {
   assert.equal(decide('mcp__tinyfish__create_dataset', rules, new Set(['tinyfish'])).action, 'drop');
 });
 
-test('decide: 单工具规则胜过服务器总开关（最具体者胜）', () => {
+test('decide: 服务器总开关压过单工具 keep（关 = 一个不剩）', () => {
   const rules = rulesOf({
     servers: { tinyfish: { enabled: false } },
     tools: { 'mcp__tinyfish__search': 'keep' },
   });
   const v = decide('mcp__tinyfish__search', rules, new Set(['tinyfish']));
-  assert.equal(v.action, 'keep', '单工具 keep 必须压过服务器关闭');
+  assert.equal(v.action, 'drop', '总开关关闭时 keep 条目不得漏网（0.3.20 语义）');
+});
+
+test('decide: 服务器总开关压过白名单', () => {
+  const rules = rulesOf({
+    servers: { tinyfish: { enabled: false, keep: ['search'] } },
+  });
+  const v = decide('mcp__tinyfish__search', rules, new Set(['tinyfish']));
+  assert.equal(v.action, 'drop', '总开关关闭时白名单也不得漏网');
 });
 
 test('decide: 单工具 drop 胜过白名单', () => {
@@ -143,6 +151,29 @@ test('decide: 未知服务器一律不隐藏', () => {
   // tinyfish 不在 knownServers 里
   const v = decide('mcp__tinyfish__search', rules, new Set(['other']));
   assert.equal(v.action, 'keep', '未知服务器不该被隐藏');
+});
+
+test('decide: 未知服务器不遮蔽显式单工具 drop', () => {
+  // 服务器级守卫只作用于服务器级规则：配置可能来自另一台机器，
+  // 此时宁可放过服务器级推断，不放过显式意图（0.3.20 重排时的回归教训）
+  const rules = rulesOf({
+    servers: { tinyfish: { enabled: false } },
+    tools: { 'mcp__tinyfish__search': 'drop' },
+  });
+  const v = decide('mcp__tinyfish__search', rules, new Set(['other']));
+  assert.equal(v.action, 'drop', '显式点名 drop 的工具，即便服务器未知也照丢');
+  assert.equal(v.reason, 'tool override: drop');
+});
+
+test('decide: 单工具 keep 不得跨过服务器白名单闸门', () => {
+  // 白名单 drop 在单工具判定之前返回：显式 keep 捞不回不在白名单里的工具
+  const rules = rulesOf({
+    servers: { tinyfish: { keep: ['search'] } },
+    tools: { 'mcp__tinyfish__fetch_content': 'keep' },
+  });
+  const v = decide('mcp__tinyfish__fetch_content', rules, new Set(['tinyfish']));
+  assert.equal(v.action, 'drop', '白名单闸门压过单工具 keep');
+  assert.equal(v.reason, 'not in tinyfish keep list');
 });
 
 test('decide: 原生工具不受服务器规则影响', () => {

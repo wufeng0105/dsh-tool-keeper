@@ -8,9 +8,9 @@
  *
  *   标题行    标题 + 一句话说明 —— 就这些。状态用提示条表达，不挂常驻标签，
  *            因为底部已有「恢复出厂」，顶部再放「出厂状态」是重复
- *   工具栏    搜索 + 折叠 + 刷新 + 导出 + 导入
+ *   工具栏    搜索 + 展开/折叠 + 刷新 + 导出 + 导入
  *   摘要      一行小字，只在隐藏过时提节省
- *   分组卡片  可折叠，头部只放标题与计数
+ *   分组卡片  默认折叠；卡片包住标题与工具，卡与卡贴合无缝
  *   行        图标 + 名称 + 副标题 + 开关
  *   展开区    左原文右改写，两框等高
  *   底部      恢复出厂 —— 危险且低频，不放主操作区
@@ -57,13 +57,23 @@ window.__ModuleLoader__.load({
       '.tw-summary{margin:10px 0 0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;font-variant-numeric:tabular-nums}',
       '.tw-divider{height:0;border-top:1px solid var(--dsw-alias-border-l2);margin:12px 0 14px}',
 
-      /* ── 分组：标题行在外，一个盒子包住整组工具 ──
-         用户三轮反馈收敛出的形态：不是行级盒子（盒与盒之间的缝多），
-         也不是完全无包裹（看不出每组的边界），
-         而是每个来源（内置 / 每台 MCP）一整个盒子，组内行间用发丝线。 */
-      '.tw-group{margin:0 0 20px}',
-      '.tw-groupHeading{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:34px;margin:0 0 8px;user-select:none}',
-      '.tw-groupToggle{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;padding:4px 0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}',
+      /* ── 分组：一张卡片包住标题与整组工具，卡与卡贴合无缝 ──
+         第四轮反馈收敛出的形态：标题行收进卡片，折叠态也是一张完整的卡，
+         不再裸奔；组间不留缝，相邻卡的边框重合成一条线；
+         组内行间用发丝线，行级仍然没有独立盒子。首尾卡保留圆角。 */
+      '.tw-group{margin:0;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l2);overflow:hidden}',
+      '.tw-group+.tw-group{margin-top:-1px}',
+      '.tw-groups>.tw-group:first-child{border-radius:var(--dsw-radius-sm,8px) var(--dsw-radius-sm,8px) 0 0}',
+      '.tw-groups>.tw-group:last-child{border-radius:0 0 var(--dsw-radius-sm,8px) var(--dsw-radius-sm,8px)}',
+      '.tw-groups>.tw-group:first-child:last-child{border-radius:var(--dsw-radius-sm,8px)}',
+      /* 标题行高必须等于工具行实际高度（34px 图标块 + 12px 行内边距 = 46px）：
+         折叠卡与展开行在同一竖列里堆叠，一高一矮节奏就断了。 */
+      /* 头部容器：折叠按钮占满剩余宽度，总开关独立在最右。行高仍与工具行一致。 */
+      '.tw-groupHeader{display:flex;align-items:stretch;gap:4px}',
+      '.tw-groupToggle{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:46px;padding:0 10px;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;user-select:none;transition:background 150ms ease}',
+      '.tw-groupToggle:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}',
+      '.tw-groupToggle:disabled{cursor:default}',
+      '.tw-groupLead{display:flex;align-items:center;gap:8px;min-width:0}',
       '.tw-groupIcon{flex:none;width:16px;height:16px;stroke:var(--dsw-alias-label-secondary);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}',
       '.tw-groupTitle{min-width:0;margin:0;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.tw-groupMeta{display:flex;align-items:center;gap:8px;flex:none}',
@@ -73,11 +83,15 @@ window.__ModuleLoader__.load({
       '.tw-chevron:not(.is-open){transform:rotate(-90deg)}',
       '.tw-groupToggle:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
 
-      /* ── 列表与行：盒子包住整组，行间发丝线 ── */
-      '.tw-list{display:flex;flex-direction:column;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm,8px);overflow:hidden}',
+      /* ── 列表：卡内的工具列表，顶部发丝线与标题分隔，行间发丝线 ── */
+      '.tw-list{display:flex;flex-direction:column;border-top:1px solid var(--dsw-alias-border-l2)}',
       '.tw-item{display:flex;flex-direction:column}',
       '.tw-item+.tw-item{border-top:.5px solid var(--dsw-alias-border-l2)}',
-      '.tw-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:44px;padding:6px 10px;transition:background 150ms ease}',
+      /* 行必须 border-box：content-box 下 min-height 不含内边距，行会多出 12px，
+         与分组标题（46px）错位。46 = 34px 图标块 + 6px×2 内边距。 */
+      /* 行必须 border-box：content-box 下 min-height 不含内边距，行会多出 12px，
+         与分组标题（46px）错位。46 = 34px 图标块 + 6px×2 内边距。 */
+      '.tw-row{box-sizing:border-box;display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px;min-height:46px;padding:6px 10px;transition:background 150ms ease}',
       '.tw-row:hover{background:var(--dsw-alias-interactive-bg-hover)}',
       '.tw-icon{flex:none;width:34px;height:34px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-layer-1);display:flex;align-items:center;justify-content:center;position:relative}',
       '.tw-icon svg{width:16px;height:16px;stroke:var(--dsw-alias-label-secondary);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}',
@@ -93,6 +107,7 @@ window.__ModuleLoader__.load({
 
       /* 开关 */
       '.tw-switch{flex:none;display:inline-flex;align-items:center;background:none;border:none;padding:0;cursor:pointer}',
+      '.tw-groupHeader .tw-switch{margin:0 10px 0 0;align-self:center}',
       '.tw-switch:disabled{cursor:default;opacity:.5}',
       '.tw-track{width:38px;height:20px;border-radius:10px;background:var(--dsw-alias-border-l2);position:relative;transition:background 180ms cubic-bezier(.2,.7,.3,1)}',
       '.tw-switch[aria-checked=true] .tw-track{background:var(--dsw-alias-state-success-primary)}',
@@ -144,7 +159,7 @@ window.__ModuleLoader__.load({
       '.tw-groups>.tw-group:nth-child(n+7){animation-delay:240ms}',
 
       '@media (max-width:640px){.tw-fields{grid-template-columns:1fr}}',
-      '@media (prefers-reduced-motion: reduce){.tw-group,.tw-detail{animation:none}.tw-track,.tw-knob,.tw-btn,.tw-chevron,.tw-row,.tw-name,.tw-dot,.tw-group{transition:none}}',
+      '@media (prefers-reduced-motion: reduce){.tw-group,.tw-detail{animation:none}.tw-track,.tw-knob,.tw-btn,.tw-chevron,.tw-row,.tw-name,.tw-dot,.tw-groupToggle{transition:none}}',
     ].join('\n');
 
     function call(body) {
@@ -241,6 +256,8 @@ window.__ModuleLoader__.load({
       var isMcp = typeof role.server === 'string' && role.server !== '';
       // 状态来自服务器级规则时必须说出来，否则用户不知道为什么这一行是关的
       var fromServer = role.source === 'server';
+      // 整台服务器停用时，行级开关是无效操作 —— 禁用比「点了没反应」诚实
+      var serverDisabled = props.serverDisabled === true;
 
       return h('div', { className: 'tw-row' },
         h('span', { className: 'tw-icon', 'data-state': hidden ? 'off' : 'on' },
@@ -255,15 +272,16 @@ window.__ModuleLoader__.load({
             onClick: props.onExpand,
           }, role.name),
           h('span', { className: 'tw-meta' },
+            serverDisabled ? '服务器已停用' : null,
             props.rewritten ? '已改写' : null,
-            fromServer ? '服务器规则关闭' : null,
+            fromServer && !serverDisabled ? '服务器规则关闭' : null,
           ),
         ),
         role.protected
           ? h('span', { className: 'tw-lock' }, '受保护')
           : h(Switch, {
             checked: hidden !== true,
-            disabled: props.busy,
+            disabled: props.busy || serverDisabled,
             label: (hidden ? '启用 ' : '隐藏 ') + role.name,
             // 必须把「当前引擎判定」一起传出去。只看 rules.tools 是错的：
             // 被服务器规则关掉的行，tools 里没有条目，点开关会再写一条 drop，
@@ -307,31 +325,53 @@ window.__ModuleLoader__.load({
       );
     }
 
-    /** 一个可折叠的分组卡片。头部只放标题与计数，不放批量按钮。 */
+    /**
+     * 一个可折叠的分组卡片。整张卡包住标题与工具，标题行就是卡片头：
+     * 左区（chevron+图标+标题+计数）整体是折叠按钮；MCP 组在最右另有一个
+     * 服务器总开关，独立于折叠按钮 —— 两个热区互不误触。
+     * 总开关写 servers.<名>.enabled，是「整台取消注册」的一层覆盖：
+     * 关 = 该组一个不剩（引擎优先级最高）；开 = 底下逐条规则原样生效。
+     */
     function ToolGroup(props) {
       var section = props.section;
       var roles = section.roles;
-      var open = props.open !== false;
+      var open = props.open === true;
       var hiddenCount = roles.filter(function (r) { return r.effective === 'drop'; }).length;
       var isMcp = section.group !== 'core';
+      var serverName = isMcp ? section.group.replace(/^mcp:/, '') : undefined;
+      // 总开关状态读 rules.disabledServers（引擎判定源），不是页面自己的推导
+      var serverDisabled = isMcp && props.disabledServers.indexOf(serverName) >= 0;
 
       return h('section', { className: 'tw-group' },
-        h('div', { className: 'tw-groupHeading' },
+        h('div', { className: 'tw-groupHeader' },
           h('button', {
             type: 'button',
             className: 'tw-groupToggle',
             'aria-expanded': open,
             onClick: props.onToggleGroup,
           },
-            chevron(open),
-            isMcp ? h(ServerIcon) : h(FolderIcon),
-            h('span', { className: 'tw-groupTitle' },
-              isMcp ? 'MCP · ' + section.group.replace(/^mcp:/, '') : '内置工具'),
+            h('span', { className: 'tw-groupLead' },
+              chevron(open),
+              isMcp ? h(ServerIcon) : h(FolderIcon),
+              h('span', { className: 'tw-groupTitle' },
+                isMcp ? 'MCP · ' + serverName : '内置工具'),
+            ),
+            h('span', { className: 'tw-groupMeta' },
+              h('span', { className: 'tw-count' },
+                serverDisabled
+                  ? '已停用'
+                  : roles.length + ' 个' + (hiddenCount > 0 ? ' · ' + hiddenCount + ' 已隐藏' : '')),
+            ),
           ),
-          h('div', { className: 'tw-groupMeta' },
-            h('span', { className: 'tw-count' },
-              roles.length + ' 个' + (hiddenCount > 0 ? ' · ' + hiddenCount + ' 已隐藏' : '')),
-          ),
+          // 服务器总开关只出现在 MCP 组。stopPropagation 防止点击冒泡触发折叠。
+          isMcp
+            ? h(Switch, {
+              checked: !serverDisabled,
+              disabled: props.busy,
+              label: (serverDisabled ? '启用服务器 ' : '停用服务器 ') + serverName,
+              onClick: function () { props.onToggleServer(serverName, serverDisabled); },
+            })
+            : null,
         ),
         open
           ? h('div', { className: 'tw-list' },
@@ -345,7 +385,8 @@ window.__ModuleLoader__.load({
                 h(ToolRow, {
                   role: role,
                   rewritten: props.rewrittenNames[role.name] === true,
-                  busy: props.busy,
+                  busy: props.busy || serverDisabled,
+                  serverDisabled: serverDisabled,
                   expanded: expanded,
                   onExpand: function () { props.onExpand(role.name); },
                   onToggle: function (effective) { props.onToggle(role.name, effective); },
@@ -372,7 +413,9 @@ window.__ModuleLoader__.load({
       var data = props.data;
       var rewrites = data.rules.rewrites || {};
       var query = (props.query || '').trim().toLowerCase();
-      var collapsed = props.collapsed || {};
+      // expanded 语义：「记录谁被手动展开了」。空 map = 全部折叠（默认态）。
+      // 搜索时强制展开有匹配的组——否则结果全藏在折叠卡里，搜了等于白搜。
+      var expanded = props.expanded || {};
 
       // 改写状态做成查表，不改入参对象
       var rewrittenNames = {};
@@ -405,9 +448,14 @@ window.__ModuleLoader__.load({
       groups.forEach(function (g) { visible = visible.concat(g.roles); });
       var visibleHidden = visible.filter(isHidden);
 
-      var allCollapsed = groups.length > 0 && groups.every(function (g) {
-        return collapsed[g.group] === true;
+      // 工具栏按钮按「当前是否全开」换文案：默认折叠 → 显示「展开」；
+      // 全部展开 → 显示「折叠」。搜索态强制展开，按钮此时不参与判断。
+      var searchOpen = query !== '';
+      var allOpen = groups.length > 0 && groups.every(function (g) {
+        return searchOpen || expanded[g.group] === true;
       });
+      // 引擎判定的停用服务器集合（rules.disabledServers），头部总开关读它
+      var disabledServers = data.rules.disabledServers || [];
 
       return h('div', { className: 'tw' },
         /* 标题行：导航里已经叫「工具管理」，这里不再重复标题与说明 */
@@ -448,8 +496,8 @@ window.__ModuleLoader__.load({
             h('button', {
               className: 'tw-btn',
               disabled: groups.length === 0,
-              onClick: function () { props.onCollapseAll(!allCollapsed); },
-            }, allCollapsed ? '展开' : '折叠'),
+              onClick: function () { props.onToggleAll(!allOpen); },
+            }, allOpen ? '折叠' : '展开'),
             h('button', {
               className: 'tw-btn',
               onClick: props.onReload, disabled: props.busy,
@@ -501,10 +549,12 @@ window.__ModuleLoader__.load({
                 rewrites: rewrites,
                 rewrittenNames: rewrittenNames,
                 busy: props.busy,
-                open: collapsed[g.group] !== true,
+                disabledServers: disabledServers,
+                open: searchOpen || expanded[g.group] === true,
                 expandedName: props.expandedName,
                 draft: props.draft,
                 onToggleGroup: function () { props.onToggleGroup(g.group); },
+                onToggleServer: props.onToggleServer,
                 onExpand: props.onExpand,
                 onDraft: props.onDraft,
                 onToggle: props.onToggle,
@@ -531,7 +581,7 @@ window.__ModuleLoader__.load({
       var s2 = React.useState(false); var busy = s2[0]; var setBusy = s2[1];
       var s4 = React.useState(null); var expandedName = s4[0]; var setExpandedName = s4[1];
       var s5 = React.useState(''); var draft = s5[0]; var setDraft = s5[1];
-      var s6 = React.useState({}); var collapsed = s6[0]; var setCollapsed = s6[1];
+      var s6 = React.useState({}); var expandedGroups = s6[0]; var setExpandedGroups = s6[1];
       var s7 = React.useState(''); var query = s7[0]; var setQuery = s7[1];
       var importInputRef = React.useRef(null);
 
@@ -573,12 +623,13 @@ window.__ModuleLoader__.load({
         persist(nextToolsAfterToggle(tools, name, effective));
       }
 
-      function onCollapseAll(shouldCollapse) {
+      /** 全开/全折叠：全开 = 表里记满所有组；全折叠 = 清空表回默认态。 */
+      function onToggleAll(shouldOpen) {
         var next = {};
-        if (shouldCollapse) {
+        if (shouldOpen) {
           data.groups.forEach(function (g) { next[g.group] = true; });
         }
-        setCollapsed(next);
+        setExpandedGroups(next);
       }
 
       function onExpand(name) {
@@ -653,9 +704,30 @@ window.__ModuleLoader__.load({
       }
 
       function onToggleGroup(group) {
-        var next = Object.assign({}, collapsed);
+        var next = Object.assign({}, expandedGroups);
         if (next[group] === true) delete next[group]; else next[group] = true;
-        setCollapsed(next);
+        setExpandedGroups(next);
+      }
+
+      /**
+       * 服务器总开关：写 servers.<名>.enabled 的整块替换。
+       * 关 = enabled:false（整台取消注册，逐条规则不动）；开 = 删掉 enabled 字段，
+       * 底下的逐条隐藏/白名单原样生效。servers 里已有 keep 白名单的必须原样保留。
+       */
+      function onToggleServer(server, currentlyDisabled) {
+        var next = Object.assign({}, data.rules.servers || {});
+        var entry = Object.assign({}, next[server] || {});
+        if (currentlyDisabled) delete entry.enabled;
+        else entry.enabled = false;
+        // 空条目不落盘（baseline 是全空，别替用户留空壳）
+        if (entry.enabled === undefined && entry.keep === undefined) delete next[server];
+        else next[server] = entry;
+        setBusy(true); setError(null);
+        call({ op: 'set', servers: next }).then(function () {
+          return call({ op: 'state' });
+        }).then(function (next2) { setData(next2); })
+          .catch(function (e) { setError(e.message); })
+          .then(function () { setBusy(false); });
       }
 
       return h(ToolKeeperView, {
@@ -665,10 +737,11 @@ window.__ModuleLoader__.load({
         expandedName: expandedName,
         draft: draft,
         query: query,
-        collapsed: collapsed,
+        expanded: expandedGroups,
         onQuery: setQuery,
         onToggleGroup: onToggleGroup,
-        onCollapseAll: onCollapseAll,
+        onToggleServer: onToggleServer,
+        onToggleAll: onToggleAll,
         onExpand: onExpand,
         onDraft: setDraft,
         onToggle: onToggle,

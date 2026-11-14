@@ -35,7 +35,7 @@ import { createBaselineConfig } from './baseline.js';
 import { mountApi } from './api.js';
 import { hashText } from './hash.js';
 
-export const name = 'dsh-tool-keeper';
+export const name = '@wufeng0105/dsh-tool-keeper';
 
 /** `tools` 是硬依赖：没有它就无法拦截。`agents` 用不到，不加。 */
 export const inject = ['tools'];

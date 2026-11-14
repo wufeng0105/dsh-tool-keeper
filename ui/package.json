@@ -1,6 +1,6 @@
 {
   "name": "dsh-tool-keeper-ui",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "private": true,
   "description": "Tool Keeper 设置页（浏览器半）：看全部工具占多少上下文，逐个开关。",
   "type": "module",

@@ -18,9 +18,11 @@
  *
  * ## 优先级（DESIGN「规则冲突时听谁的」）
  *
- *   单工具规则  >  服务器白名单  >  服务器总开关
+ *   保护名单  >  服务器总开关  >  单工具规则  >  服务器白名单
  *
- * 归一化时取最具体者，不保存三层原始意图。
+ * 服务器总开关压过一切逐条规则：它是「整台服务器取消注册」的一层覆盖，
+ * 关闭时 keep 条目（单工具规则与白名单）不得漏网 —— 否则"关 = 一个不剩"
+ * 就是一句空话（0.3.20 用户确认的语义）。
  *
  * @module dsh-tool-keeper/rules
  */
@@ -234,7 +236,7 @@ function isDangerousKey(key) {
 /**
  * 判定一个工具该怎么处理。
  *
- * 优先级：单工具规则 > 服务器白名单 > 服务器总开关。
+ * 优先级：保护名单 > 服务器总开关 > 单工具规则 > 服务器白名单。
  *
  * @param name - 工具的注册名
  * @param rules - normalizeConfig 返回的 rules
@@ -251,30 +253,31 @@ export function decide(name, rules, knownServers) {
     return { action: 'keep', reason: 'protected' };
   }
 
-  // 1. 单工具规则（最具体）
+  // 1. 服务器总开关 / 2. 服务器白名单（仅对 MCP 工具）。
+  //    总开关必须压过下面的单工具规则：关 = 整台服务器一个不剩。
+  //    「未知服务器」守卫只作用于服务器级规则本身，不得遮蔽下面的单工具规则：
+  //    显式点名 drop 的工具，即便服务器不在已知集合里也照丢（旧行为，回归测试锚定）。
+  const parts = splitMcpName(name);
+  if (parts !== undefined) {
+    const known = knownServers === undefined || knownServers.has(parts.server);
+    if (known) {
+      if (rules.disabledServers.has(parts.server)) {
+        return { action: 'drop', reason: `server ${parts.server} disabled` };
+      }
+      const keep = rules.serverKeep.get(parts.server);
+      if (keep !== undefined && !keep.has(parts.leaf)) {
+        return { action: 'drop', reason: `not in ${parts.server} keep list` };
+      }
+    }
+  }
+
+  // 3. 单工具规则（对 MCP 工具它现在位于总开关之下）
   const override = rules.toolOverrides.get(name);
   if (override === 'keep') {
     return { action: 'keep', reason: 'tool override: keep' };
   }
   if (override === 'drop') {
     return { action: 'drop', reason: 'tool override: drop' };
-  }
-
-  // 2. 服务器白名单 / 3. 服务器总开关（仅对 MCP 工具）
-  const parts = splitMcpName(name);
-  if (parts !== undefined) {
-    if (knownServers !== undefined && !knownServers.has(parts.server)) {
-      // 未知服务器：不隐藏（配置可能来自另一台机器/另一环境）
-      return { action: 'keep', reason: `unknown server "${parts.server}"` };
-    }
-    const keep = rules.serverKeep.get(parts.server);
-    if (keep !== undefined) {
-      if (!keep.has(parts.leaf)) {
-        return { action: 'drop', reason: `not in ${parts.server} keep list` };
-      }
-    } else if (rules.disabledServers.has(parts.server)) {
-      return { action: 'drop', reason: `server ${parts.server} disabled` };
-    }
   }
 
   // 到这里仍是 keep —— 但可能有改写

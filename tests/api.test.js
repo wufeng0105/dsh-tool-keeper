@@ -254,7 +254,7 @@ test('api: 服务器总开关关闭时，该服务器工具 effective=drop 且 s
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('api: 单工具规则优先于服务器规则', async () => {
+test('api: 服务器总开关压过单工具 keep（关 = 一个不剩）', async () => {
   const { captured, configPath, dir, dispose } = setup();
   writeFileSync(configPath, JSON.stringify({
     enabled: true,
@@ -264,8 +264,8 @@ test('api: 单工具规则优先于服务器规则', async () => {
   }));
   const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
   const role = findRole(r.json, 'mcp__tinyfish__search');
-  assert.equal(role.effective, 'keep', '单工具 keep 应压过服务器总开关');
-  assert.equal(role.source, 'tool');
+  assert.equal(role.effective, 'drop', '总开关关闭时 keep 条目不得漏网（0.3.20 语义）');
+  assert.equal(role.source, 'server');
   dispose();
   rmSync(dir, { recursive: true, force: true });
 });

@@ -1,6 +1,6 @@
 # Tool Keeper bundle patch。
 #
-# 三行：
+# 两个入口：
 #   dsh-tool-keeper       —— 宿主半：拦截 tools.register，决定丢弃/改写/放行
 #   dsh-tool-keeper-ui    —— 设置页的宿主空壳，只为让 Loader 有一行可指
 #
@@ -8,10 +8,12 @@
 # 相对**本包目录**解析。浏览器半的发现只认「包的精确包名」或「路径里的最近
 # package.json」——`ui/package.json` 提供了后者。裸子路径会被当成非包跳过。
 #
-# ⚠️ 两行的 name 前缀必须与 package.json 的 `name` 逐字一致，否则装完解析不到。
+# ⚠️ 宿主半那行的 name 必须含 package.json 的 `name` 逐字段——2026-11-15 起包名是
+# `@wufeng0105/dsh-tool-keeper`（此前是无 scope 的 `dsh-tool-keeper`）。改包名时这行一起改，
+# 否则装完解析不到，插件等于没装上（preflight 的 bundle 门会先红）。
 - insert:
     - id: dsh-tool-keeper
-      name: 'dsh-tool-keeper'
+      name: '@wufeng0105/dsh-tool-keeper'
       config: {}
     - id: dsh-tool-keeper-ui
       name: './ui/index.js'

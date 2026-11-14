@@ -62,6 +62,12 @@ function makeData(overrides = {}) {
 
 const noop = () => {};
 
+/** 数 HTML 里的 aria-expanded="true" 次数。 */
+function htmlHasAriaExpanded(html, expected) {
+  const count = (html.match(/aria-expanded="true"/g) || []).length;
+  return count === expected;
+}
+
 function renderView(data, extra = {}) {
   const { mod } = loadUi();
   return renderToStaticMarkup(React.createElement(mod.__testing.View, Object.assign({
@@ -72,9 +78,10 @@ function renderView(data, extra = {}) {
     expandedName: null,
     draft: '',
     query: '',
-    collapsed: {},
+    expanded: {},
     onQuery: noop,
     onToggleGroup: noop,
+    onToggleAll: noop,
     onExpand: noop,
     onDraft: noop,
     onToggle: noop,
@@ -131,31 +138,82 @@ test('ui: 导航排序用 50，不与已知插件撞号', () => {
 });
 
 // ─────────────────────────────────────────────
-// 分组卡片：外面一个整体
+// 分组卡片：一张卡包住标题与整组工具，卡与卡贴合无缝
 // ─────────────────────────────────────────────
-test('ui: 分组 = 标题行 + 一个盒子包住整组工具（行间发丝线）', () => {
+test('ui: 分组 = 卡片包住标题与工具（标题行在卡内，卡间无缝）', () => {
   const { mod } = loadUi();
   const css = mod.__testing.CSS;
-  // 分组标题行不带卡片（那是三轮前被否掉的三层嵌套）
-  const groupRule = css.match(/\.tw-group\{([^}]*)\}/);
-  assert.ok(groupRule !== null, '要有 .tw-group 规则');
-  assert.ok(!/border/.test(groupRule[1]), '分组标题行不能有边框');
-  assert.ok(!/background/.test(groupRule[1]), '分组标题行不能有底色');
-
-  // 包裹感在「列表」这一层：一个盒子包住整组工具
+  // 卡片本体：.tw-group 自己带边框与底色，标题收进卡内
+  const groupRule = css.match(/(?:^|\n)\.tw-group\{([^}]*)\}/);
+  assert.ok(groupRule !== null, '要有 .tw-group 卡片规则');
+  assert.ok(/border:1px solid/.test(groupRule[1]), '卡片要有边框包住整组');
+  assert.ok(/background/.test(groupRule[1]), '卡片要有底色');
+  assert.ok(/overflow:hidden/.test(groupRule[1]), '卡片要裁切内部');
+  // 卡与卡贴合：相邻卡 margin-top:-1px 让边框重合成一条线
+  assert.ok(/\.tw-group\+\.tw-group\{margin-top:-1px\}/.test(css), '相邻卡片要无缝贴合');
+  // 组间不再有旧的大间距
+  assert.ok(!/\.tw-group\{[^}]*margin:0 0 20px/.test(css), '组间不应有 20px 缝');
+  // 列表降级为卡内分隔，不再是独立盒子
   const listRule = css.match(/\.tw-list\{([^}]*)\}/);
   assert.ok(listRule !== null);
-  assert.ok(/border:1px solid/.test(listRule[1]), '列表要有边框包住整组');
-  assert.ok(/border-radius/.test(listRule[1]), '列表要圆角');
-  assert.ok(/overflow:hidden/.test(listRule[1]), '圆角要裁切内部');
+  assert.ok(!/border:1px solid/.test(listRule[1]), '列表不再自带边框（那是卡片的事）');
+  assert.ok(/border-top:1px solid/.test(listRule[1]), '列表与标题之间要发丝线分隔');
 
-  // 行级不再有盒子（那是上一轮被否的方案，盒与盒之间的缝很丑）
+  // 行级仍然没有盒子（那是上一轮被否的方案，盒与盒之间的缝很丑）
   const itemRule = css.match(/\.tw-item\{([^}]*)\}/);
   assert.ok(itemRule !== null);
   assert.ok(!/border:/.test(itemRule[1]), '单个工具行不能自己带边框');
 
   // 行与行之间用发丝线
   assert.ok(/\.tw-item\+\.tw-item\{border-top:\.5px solid/.test(css), '行间要发丝线');
+});
+
+test('ui: 分组标题行是整卡可点的按钮（计数也在点击区内）', () => {
+  const { mod } = loadUi();
+  const css = mod.__testing.CSS;
+  // 头部容器 + 折叠按钮 + 独立总开关的三段结构
+  const headerRule = css.match(/\.tw-groupHeader\{([^}]*)\}/);
+  assert.ok(headerRule !== null, '要有头部容器（放折叠按钮与总开关）');
+  assert.ok(/display:flex/.test(headerRule[1]), '头部容器用 flex 横排');
+  // 旧的 heading 容器不再存在
+  assert.ok(!css.includes('.tw-groupHeading'), '不应再有独立的 heading 容器');
+  // 折叠按钮占满剩余宽度（总开关独立在最右，不占折叠热区）
+  const toggleRule = css.match(/\.tw-groupToggle\{([^}]*)\}/);
+  assert.ok(toggleRule !== null, '要有标题按钮规则');
+  assert.ok(/flex:1 1 0/.test(toggleRule[1]), '折叠按钮要占满剩余宽度');
+  assert.ok(/justify-content:space-between/.test(toggleRule[1]), '标题与计数两端分布');
+  assert.ok(/cursor:pointer/.test(toggleRule[1]), '标题按钮要可点');
+  // 总开关只出现在 MCP 组：内置工具组（core）不渲染头部开关
+  const html = renderView(makeData());
+  // 每段 tw-groupHeader 内是否含 role="switch"：2 个组 → 恰 1 段有（tinyfish）
+  const headerChunks = html.split('tw-groupHeader').slice(1);
+  assert.equal(headerChunks.length, 2, '两个分组各有一个头部容器');
+  const withSwitch = headerChunks.filter(c => c.includes('role="switch"')).length;
+  assert.equal(withSwitch, 1, '恰好 MCP 组的头部有总开关');
+  // 总开关独立于折叠按钮：不在 tw-groupToggle 内部
+  for (const chunk of headerChunks) {
+    const toggleEnd = chunk.indexOf('</button>');
+    const switchPos = chunk.indexOf('role="switch"');
+    if (switchPos >= 0) {
+      assert.ok(switchPos > toggleEnd, '总开关必须在折叠按钮之外，不嵌在其内部');
+    }
+  }
+
+  // 标题行高必须等于工具行实际高度：图标块(34px) + 行上下内边距(6px*2) = 46px。
+  // 推导式断言——改任一因子时这条会重新算，而不是跟着写死的数字漂移。
+  const iconRule = css.match(/\.tw-icon\{([^}]*)\}/);
+  assert.ok(iconRule !== null, '要有图标块规则');
+  const iconHeight = iconRule[1].match(/height:(\d+)px/);
+  assert.ok(iconHeight !== null, '图标块要定高');
+  const rowRule = css.match(/\.tw-row\{([^}]*)\}/);
+  assert.ok(rowRule !== null, '要有工具行规则');
+  const rowPadding = rowRule[1].match(/padding:(\d+)px (\d+)px/);
+  assert.ok(rowPadding !== null, '工具行要有上下内边距');
+  const expected = Number(iconHeight[1]) + Number(rowPadding[1]) * 2;
+  const declared = toggleRule[1].match(/min-height:(\d+)px/);
+  assert.ok(declared !== null, '标题按钮要定高');
+  assert.equal(Number(declared[1]), expected,
+    `标题行高(${declared[1]})必须等于工具行实际高度(${expected})——折叠卡与展开行堆叠在一起，一高一矮节奏就断了`);
 });
 
 test('ui: 渲染出两个分组卡片', () => {
@@ -173,9 +231,9 @@ test('ui: 分组头部有标题与计数', () => {
 });
 
 // ─────────────────────────────────────────────
-// 折叠
+// 折叠：语义反转——expanded 记录谁被手动展开，空表 = 默认全折叠
 // ─────────────────────────────────────────────
-test('ui: 分组头部是可折叠按钮，带 chevron', () => {
+test('ui: 分组头部是整卡可点按钮，带 chevron', () => {
   const html = renderView(makeData());
   const toggles = html.match(/class="tw-groupToggle"/g) || [];
   assert.equal(toggles.length, 2, '每个分组一个折叠按钮');
@@ -183,32 +241,67 @@ test('ui: 分组头部是可折叠按钮，带 chevron', () => {
   assert.equal(chevrons.length, 2, '每个分组一个箭头');
 });
 
-test('ui: 默认展开，aria-expanded=true', () => {
+test('ui: 默认全折叠，aria-expanded=false', () => {
   const html = renderView(makeData());
-  const expanded = html.match(/class="tw-groupToggle" aria-expanded="true"/g) || [];
-  assert.equal(expanded.length, 2, '默认全部展开');
+  const expanded = html.match(/aria-expanded="false"/g) || [];
+  assert.equal(expanded.length, 2, '默认全部折叠');
+  assert.ok(!html.includes('>read<'), '折叠组内的工具不应出现');
+  assert.ok(!html.includes('mcp__tinyfish__search'), '折叠组内的工具不应出现');
 });
 
-test('ui: 折叠某组后该组内容不渲染', () => {
-  const html = renderView(makeData(), { collapsed: { core: true } });
+test('ui: 手动展开某组后该组内容渲染', () => {
+  const html = renderView(makeData(), { expanded: { core: true } });
   const expanded = html.match(/aria-expanded="true"/g) || [];
-  assert.equal(expanded.length, 1, '折叠一组后只剩一组展开');
-  assert.ok(!html.includes('>read<'), '折叠组内的工具不应出现');
-  assert.ok(html.includes('mcp__tinyfish__search'), '未折叠组应正常显示');
+  assert.equal(expanded.length, 1, '只展开一组');
+  assert.ok(html.includes('>read<'), '展开组内的工具应出现');
+  assert.ok(!html.includes('mcp__tinyfish__search'), '未展开组仍折叠');
+});
+
+test('ui: 搜索时强制展开有匹配的组，清空后回默认折叠', () => {
+  const filtered = renderView(makeData(), { query: 'tinyfish' });
+  assert.ok(htmlHasAriaExpanded(filtered, 1), '搜索态匹配组应强制展开');
+  assert.ok(filtered.includes('mcp__tinyfish__search'), '搜索结果应可见');
+
+  const cleared = renderView(makeData(), { expanded: {} });
+  assert.ok(!cleared.includes('mcp__tinyfish__search'), '清空搜索回到默认折叠');
 });
 
 test('ui: 折叠箭头方向随状态变化', () => {
-  const open = renderView(makeData());
-  const closed = renderView(makeData(), { collapsed: { core: true } });
+  const open = renderView(makeData(), { expanded: { core: true } });
+  const closed = renderView(makeData());
   assert.ok(open.includes('tw-chevron is-open'), '展开态箭头朝下');
   assert.ok(closed.includes('class="tw-chevron"'), '折叠态箭头旋转');
 });
 
 // ─────────────────────────────────────────────
-// 行
+// 行（默认全折叠，这些测试显式展开全部组来测行级行为）
 // ─────────────────────────────────────────────
+const ALL_OPEN = { core: true, 'mcp:tinyfish': true };
+
+test('ui: 服务器总开关关闭时该组显示「已停用」', () => {
+  const data = makeData();
+  // disabledServers 是引擎判定源（api state 的 rules.disabledServers）
+  data.rules.disabledServers = ['tinyfish'];
+  const html = renderView(data, { expanded: ALL_OPEN });
+  // 锚定计数区专属结构，避免被行级副标题「服务器已停用」的子串遮蔽：
+  // tw-count 里只有「已停用」，不再有「N 个 · N 已隐藏」
+  const counts = html.match(/class="tw-count"[^>]*>([^<]*)</g) || [];
+  assert.ok(counts.some(c => c.includes('已停用')), '停用组的计数区应显示「已停用」: ' + counts.join(' | '));
+  assert.ok(counts.every(c => !c.includes('已隐藏')), '停用态计数区不再显示「已隐藏」数字');
+});
+
+test('ui: 停用服务器的行级开关全部禁用，副标题说明原因', () => {
+  const data = makeData();
+  data.rules.disabledServers = ['tinyfish'];
+  const html = renderView(data, { expanded: ALL_OPEN });
+  // React 19 静态渲染把 disabled 输出为 disabled=""；行级开关 2 个 + 头部 busy 总开关 1 个
+  const disabledSwitches = (html.match(/disabled=""/g) || []).length;
+  assert.ok(disabledSwitches >= 2, '停用组的行级开关应为 disabled，实际 ' + disabledSwitches);
+  assert.ok(html.includes('服务器已停用'), '行副标题必须说明「服务器已停用」');
+});
+
 test('ui: 每行有图标块 + 名称 + 副标题', () => {
-  const html = renderView(makeData());
+  const html = renderView(makeData(), { expanded: ALL_OPEN });
   assert.ok(html.includes('tw-icon'));
   assert.ok(html.includes('tw-name'));
   assert.ok(html.includes('tw-meta'));
@@ -216,38 +309,44 @@ test('ui: 每行有图标块 + 名称 + 副标题', () => {
 });
 
 test('ui: 每行有状态点', () => {
-  const html = renderView(makeData());
+  const html = renderView(makeData(), { expanded: ALL_OPEN });
   const dots = html.match(/class="tw-dot"/g) || [];
   assert.equal(dots.length, 5);
 });
 
-test('ui: 行用 grid 三列（图标/内容/开关）', () => {
+test('ui: 行用 grid 三列（图标/内容/开关）且 border-box 46px，与分组标题同高', () => {
   const { mod } = loadUi();
   const css = mod.__testing.CSS;
-  assert.ok(/\.tw-row\{[^}]*grid-template-columns:34px minmax\(0,1fr\) auto/.test(css));
-  assert.ok(/\.tw-row\{[^}]*min-height:44px/.test(css));
+  const rowRule = css.match(/\.tw-row\{([^}]*)\}/);
+  assert.ok(rowRule !== null);
+  assert.ok(/grid-template-columns:34px minmax\(0,1fr\) auto/.test(rowRule[1]));
+  // 必须 border-box：否则 min-height 不含内边距，行实际 56px，与 46px 标题错位
+  assert.ok(/box-sizing:border-box/.test(rowRule[1]), '工具行必须 border-box，否则与标题行错位 12px');
+  assert.ok(/min-height:46px/.test(rowRule[1]), '行高 46（34 图标块 + 6×2 内边距），与分组标题一致');
 });
 
 // ─────────────────────────────────────────────
 // 开关
 // ─────────────────────────────────────────────
-test('ui: 非保护工具显示开关', () => {
-  const html = renderView(makeData());
+test('ui: 非保护工具显示开关（含 MCP 头部总开关）', () => {
+  const html = renderView(makeData(), { expanded: ALL_OPEN });
   const switches = html.match(/role="switch"/g) || [];
-  assert.equal(switches.length, 3, '三个非保护工具三个开关');
+  // 3 个行级开关 + tinyfish 组头部 1 个服务器总开关
+  assert.equal(switches.length, 4, '三个非保护工具三个行开关 + 一个服务器总开关');
 });
 
 test('ui: 保护工具不显示开关，标「受保护」', () => {
-  const html = renderView(makeData());
+  const html = renderView(makeData(), { expanded: ALL_OPEN });
   const locks = html.match(/class="tw-lock"/g) || [];
   assert.equal(locks.length, 2);
   assert.ok(html.includes('受保护'));
 });
 
 test('ui: 出厂状态全部开关为开', () => {
-  const html = renderView(makeData());
+  const html = renderView(makeData(), { expanded: ALL_OPEN });
   const checked = html.match(/aria-checked="true"/g) || [];
-  assert.equal(checked.length, 3);
+  // 3 个行级 + 1 个服务器总开关（tinyfish 未停用）
+  assert.equal(checked.length, 4);
 });
 
 // ─────────────────────────────────────────────
@@ -279,7 +378,7 @@ test('ui: 未展开时不出现编辑区', () => {
 });
 
 test('ui: 展开后出现原文 + 改写框 + 保存按钮', () => {
-  const html = renderView(makeData(), { expandedName: 'mcp__tinyfish__search' });
+  const html = renderView(makeData(), { expandedName: 'mcp__tinyfish__search', expanded: ALL_OPEN });
   assert.ok(html.includes('tw-editor'));
   assert.ok(html.includes('tw-original'));
   assert.ok(html.includes('搜索网页。'), '应显示服务器原文');
@@ -288,7 +387,7 @@ test('ui: 展开后出现原文 + 改写框 + 保存按钮', () => {
 });
 
 test('ui: 展开的工具行 aria-expanded=true，未展开的为 false', () => {
-  const html = renderView(makeData(), { expandedName: 'mcp__tinyfish__search' });
+  const html = renderView(makeData(), { expandedName: 'mcp__tinyfish__search', expanded: ALL_OPEN });
   // 不能只断言 includes('aria-expanded="true"')：
   // 分组头按钮本身就带 aria-expanded="true"，那样断言永远能过（空转）。
   // 必须按工具名的按钮单独取。
@@ -303,13 +402,14 @@ test('ui: 有未保存修改时提示', () => {
   const html = renderView(makeData(), {
     expandedName: 'mcp__tinyfish__search',
     draft: '改过的说明',
+    expanded: ALL_OPEN,
   });
   assert.ok(html.includes('有未保存修改'));
 });
 
 test('ui: 没有修改时不该显示「有未保存修改」', () => {
   // 未配置任何改写、草稿为空 → 不该报脏
-  const clean = renderView(makeData(), { expandedName: 'mcp__tinyfish__search', draft: '' });
+  const clean = renderView(makeData(), { expandedName: 'mcp__tinyfish__search', draft: '', expanded: ALL_OPEN });
   assert.ok(!clean.includes('有未保存修改'), '空草稿且无改写时不该报脏');
 
   // 已有改写且草稿与之一致 → 也不该报脏
@@ -318,6 +418,7 @@ test('ui: 没有修改时不该显示「有未保存修改」', () => {
   const same = renderView(data, {
     expandedName: 'mcp__tinyfish__search',
     draft: '已保存的说明',
+    expanded: ALL_OPEN,
   });
   assert.ok(!same.includes('有未保存修改'), '草稿与已保存值相同不该报脏');
 });
@@ -328,7 +429,7 @@ test('ui: 只配了参数改写（没有 description）时也不该一展开就�
   data.rules.rewrites['mcp__tinyfish__search'] = {
     properties: { include_selectors: '只提取匹配元素' },
   };
-  const html = renderView(data, { expandedName: 'mcp__tinyfish__search', draft: '' });
+  const html = renderView(data, { expandedName: 'mcp__tinyfish__search', draft: '', expanded: ALL_OPEN });
   assert.ok(!html.includes('有未保存修改'),
     '没有 description 时当前值应视为空字符串，不能与 undefined 比较');
 });
@@ -437,9 +538,10 @@ test('ui: 服务器白名单导致的隐藏，开关显示为关', () => {
   // rules.tools 里什么都没有 —— 旧实现会把它显示成「开」，那是说谎
   data.rules.tools = {};
 
-  const html = renderView(data);
+  const html = renderView(data, { expanded: ALL_OPEN });
   const checked = html.match(/aria-checked="true"/g) || [];
-  assert.equal(checked.length, 2, '被服务器规则丢掉的工具不能显示为开');
+  // 2 个行级开 + 1 个服务器总开（服务器级关闭只丢 fetch_content，不影响头部开关）
+  assert.equal(checked.length, 3, '被服务器规则丢掉的工具不能显示为开');
   assert.ok(html.includes('服务器规则关闭'), '必须说明为什么这一行是关的');
 });
 
@@ -450,19 +552,20 @@ test('ui: rules.tools 里的 drop 不直接决定开关（以 effective 为准�
   data.groups[0].roles[2].effective = 'keep';
   data.groups[0].roles[2].source = 'tool';
 
-  const html = renderView(data);
+  const html = renderView(data, { expanded: ALL_OPEN });
   const checked = html.match(/aria-checked="true"/g) || [];
-  assert.equal(checked.length, 3, '开关只认 effective，不认 rules.tools');
+  // 3 个行级开 + 1 个服务器总开
+  assert.equal(checked.length, 4, '开关只认 effective，不认 rules.tools');
 });
 
 test('ui: 内置工具的说明标签不写「服务器」', () => {
-  const html = renderView(makeData(), { expandedName: 'create_goal' });
+  const html = renderView(makeData(), { expandedName: 'create_goal', expanded: ALL_OPEN });
   assert.ok(html.includes('原始说明'), '内置工具应有「原始说明」标签');
   assert.ok(!html.includes('服务器原始说明'), '内置工具没有服务器，不能这么写');
 });
 
 test('ui: MCP 工具仍写「服务器原始说明」', () => {
-  const html = renderView(makeData(), { expandedName: 'mcp__tinyfish__search' });
+  const html = renderView(makeData(), { expandedName: 'mcp__tinyfish__search', expanded: ALL_OPEN });
   assert.ok(html.includes('服务器原始说明'));
 });
 
@@ -497,12 +600,19 @@ test('ui: 恢复出厂只在底部出现一次', () => {
   assert.ok(html.includes('tw-footer'), '应位于底部区域');
 });
 
-test('ui: 工具栏有搜索、折叠、刷新', () => {
+test('ui: 工具栏有搜索、展开/折叠、刷新', () => {
   const html = renderView(makeData());
   assert.ok(html.includes('tw-search'));
-  assert.ok(html.includes('折叠'));
+  // 默认全折叠 → 按钮文案是「展开」；全展开时才是「折叠」
+  assert.ok(html.includes('>展开<'), '默认折叠态按钮文案为「展开」');
+  assert.ok(!html.includes('全部展开'), '用短文案，不占宽度');
   assert.ok(!html.includes('全部折叠'), '用短文案，不占宽度');
   assert.ok(html.includes('刷新'));
+});
+
+test('ui: 全部展开后按钮文案变「折叠」', () => {
+  const html = renderView(makeData(), { expanded: { core: true, 'mcp:tinyfish': true } });
+  assert.ok(html.includes('>折叠<'), '全开态按钮文案为「折叠」');
 });
 
 test('ui: 搜索框与按钮同高，且垂直居中', () => {
@@ -617,7 +727,7 @@ test('ui: CSS 采用宿主的排版刻度', () => {
   assert.ok(css.includes('font-size:13px;font-weight:600'), '行名 13 w600');
   assert.ok(css.includes('font-size:11px;line-height:13px'), '副标题 11/13');
   assert.ok(css.includes('border-radius:var(--dsw-radius-sm,8px)'), '工具盒圆角走宿主 token');
-  assert.ok(css.includes('min-height:44px'), '行高 44');
+  assert.ok(css.includes('min-height:46px'), '行高 46，与分组标题一致');
 });
 
 test('ui: 有错开浮现动效与 reduced-motion 降级', () => {
@@ -651,7 +761,7 @@ test('ui: 原文框与编辑框共用同一套盒子样式（等高同边框）'
 });
 
 test('ui: 原文包在框里且只读，改写是可编辑的 textarea', () => {
-  const html = renderView(makeData(), { expandedName: 'mcp__tinyfish__search' });
+  const html = renderView(makeData(), { expandedName: 'mcp__tinyfish__search', expanded: ALL_OPEN });
   // 原文是 div 且同时有 tw-box 与 tw-original 两个类
   assert.ok(/class="tw-box tw-original"/.test(html), '原文应同时套用 tw-box 与 tw-original');
   // 改写是 textarea 且同时有 tw-box 与 tw-editor
