@@ -1,0 +1,46 @@
+{
+  "_comment": "宿主快照：2026-11-14 从 rc.3 实跑用 cordis_inspect_query 导出。只留本项目触点依赖的签名，够判断漂移即可。",
+  "host": {
+    "version": "0.2.2-rc.3",
+    "exportedAt": "2026-11-14T15:30:00+08:00",
+    "source": "cordis_inspect_query Service.listService（精确 Service 契约，input={service:<name>}）；Client Slots.listSubTree（input={root:'settings.section'}）"
+  },
+  "services": {
+    "tools": {
+      "description": "Concrete tool registry and scoped executor dispatcher.",
+      "methods": {
+        "register": "register(definition: ToolDefinition, options: ToolRegistrationOptions = {}): () => void",
+        "restrict": "restrict(filter: ToolRestriction): () => void",
+        "guard": "guard(guard: ToolGuard): () => void",
+        "definitions": "definitions(scope?: ScopeKey, toolSet?: ResolvedToolSet): readonly ToolDefinition[]",
+        "schemas": "schemas(scope?: ScopeKey, toolSet?: ResolvedToolSet): ToolSchema[]"
+      }
+    },
+    "webServer": {
+      "description": "The browser HTTP carrier service.",
+      "methods": {
+        "getOrigin": "getOrigin(): string",
+        "register": "register(route: WebRoute | WebResourceRoute): () => void",
+        "registerUpgrade": "registerUpgrade(route: WebUpgradeRoute): () => void",
+        "registerFallback": "registerFallback(fallback: WebRoute['handler'] | Pick<WebResourceRoute, 'resource'>): () => void"
+      }
+    }
+  },
+  "slots": {
+    "settings.section": {
+      "kind": "list",
+      "scope": "root",
+      "registration": ["id", "order", "label"],
+      "ownerProps": ["close"],
+      "occupantsAtCapture": [
+        "general(0)", "models(10)", "plugins(15)", "agent-presets(20)",
+        "enhance(30)", "market(40)", "archive-manager(45)",
+        "tool-keeper(50)", "dsh-draft-studio(60)", "xdpool(440)"
+      ]
+    }
+  },
+  "notes": [
+    "精确 Service 契约与精确 Slot root 都可通过 input 传参查到。曾有记录说「input 传参一律被拒收」，2026-11-14 实测推翻——那是查询用法错误，不是宿主限制。",
+    "tools.restrict 仍只能移除不能改写内容（这是本项目走注册期拦截的根本原因，见 docs/DESIGN.md 第一节）。另注：restrict 读的是服务自己的 ctx（scopeOf(this.ctx)），不是调用者的。"
+  ]
+}

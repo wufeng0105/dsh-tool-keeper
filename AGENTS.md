@@ -52,8 +52,24 @@
 1. `npm test` —— 174 条，全绿
 2. `node <plugin-kit包>/skills/plugin-kit/scripts/preflight.mjs <项目根>` —— 0 FAIL
 3. **改断言就必须做变异测试**：故意改坏实现，确认变红，再还原。
-4. 升级 DSH 后：跑 `recheck.mjs`（触点复检）；
-   文档副本过期判定用 `reextract.mjs --check`——**该脚本只在 plugin-kit 源码仓有**（不随包分发）。
+4. **升级 DSH 后跑体检三件套**（缺一不可）：
+   - `recheck.mjs --self-test` —— 先证明它的 4 个反例都会红（脚本自己坏了要能发现）
+   - `recheck.mjs` —— 按 `touchpoints.json` 逐条复检，拿 `host-snapshot.json` 比对签名漂移
+   - `reextract.mjs --check` —— 判 dsh-doc 副本是否过期（**该脚本只在 plugin-kit 源码仓有**，不随包分发）
+5. **升级后必做行为验收**，不只看脚本 exit 0：`node --test` 之外还要真机跑一遍
+   `POST /tool-keeper/api`，确认 `patched=true`、`stale=false`、隐藏数量对得上。
+
+### `touchpoints.json` 是什么
+
+本项目的**宿主触点清单**：每一处依赖 DSH 行为的地方（服务、slot、符号、版本范围、文档声明），
+加上「怎么机判」和「判不了时怎么办」。升级 DSH 后它就是复检的清单。
+
+两条维护规则：
+
+- **`probe.kind: "none"` 的条目必须写清「为什么机器判不了」和「替代证据是什么」**，
+  不许只写「需人工」。
+- **引用代码位置时优先用函数名，行号会漂**。首次建立时写的 `api.js:282`、`ui/client.js:658`
+  后来漂到了 331、701——每轮大改之后要复查这些引用。
 
 ---
 

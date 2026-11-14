@@ -1,0 +1,121 @@
+{
+  "_comment": "dsh-tool-keeper 的宿主触点清单。host 为本机实跑版本；每条都可在升级后由 recheck.mjs 复检。probe.kind=none 的条目必须写明「为什么机器判不了」和「人工/行为替代证据」，不得含糊。结构依据 plugin-kit/assets/touchpoints.sample.json。",
+  "host": "0.2.2-rc.3",
+  "checkedAt": "2026-11-14",
+  "touchpoints": [
+    {
+      "id": "svc.tools",
+      "surface": "service",
+      "ref": "ctx.get('tools')",
+      "code": "index.js:285（installPatch 取服务）、index.js:368（makeLogger 取 logger）",
+      "why": "拦截 tools.register 的唯一入口；拿不到服务时补丁装不上，走 fail-open",
+      "probe": {
+        "kind": "service",
+        "service": "tools",
+        "method": "register",
+        "signatureIncludes": ["register(definition: ToolDefinition", "ToolRegistrationOptions", "=> void"]
+      },
+      "status": "verified",
+      "fallback": "patched:false，界面红条「拦截补丁未安装」，全部工具放行"
+    },
+    {
+      "id": "svc.webServer.register",
+      "surface": "service",
+      "ref": "webServer.register(route)",
+      "code": "api.js:331（ctx.inject(['webServer'], cb) 内调用）",
+      "why": "设置页 HTTP API 的挂载点；headless 无此服务，必须走运行期可选注入",
+      "probe": {
+        "kind": "service",
+        "service": "webServer",
+        "method": "register",
+        "signatureIncludes": ["register(route: WebRoute | WebResourceRoute)", "=> void"]
+      },
+      "status": "verified",
+      "fallback": "设置页读不到数据（fetch 失败），模型工具 tool_keeper 仍可用"
+    },
+    {
+      "id": "svc.logger",
+      "surface": "service",
+      "ref": "ctx.get('logger')",
+      "code": "index.js:368（makeLogger）",
+      "why": "统一日志出口；拿不到就退回 console，不影响过滤本身",
+      "probe": {
+        "kind": "none",
+        "manual": "logger 是可选依赖：makeLogger 里 try/catch，失败退回 console。宿主 Service 目录里没有独立的 logger 条目，机判无意义。行为证据：运行日志里能看到「[tool-keeper] ...」前缀行。"
+      },
+      "status": "verified",
+      "fallback": "日志走 console，诊断可见性下降，功能不受影响"
+    },
+    {
+      "id": "inject.tools",
+      "surface": "package",
+      "ref": "inject:tools",
+      "code": "index.js:41",
+      "why": "tools 是硬依赖；写错服务名插件永远 pending，宿主判定 web 启动失败",
+      "probe": {
+        "kind": "package",
+        "file": "package.json",
+        "path": ["name"],
+        "equals": "dsh-tool-keeper"
+      },
+      "status": "verified",
+      "fallback": "n/a（package 探针顺带锁包名：0.3.17 改成 dsh-tool-keeper 后不得回退到 @local/）"
+    },
+    {
+      "id": "slot.settings.section",
+      "surface": "slot",
+      "ref": "ctx.slots.inject('settings.section', ...)",
+      "code": "ui/client.js:701",
+      "why": "设置页入口。2026-11-10 同类写法出过「设置页看不到」的事故，必须能机判",
+      "probe": {
+        "kind": "none",
+        "manual": "用 cordis_inspect_query 的 Client Slots.listSubTree，input 传 {root:'settings.section'}，在 selected.occupants 里找 {id:'tool-keeper', active:true}。**这条 2026-11-14 实测可机判**：早期误记成「input 传参会被拒收、occupants 不返回」，实际两个都能查到——当时是查错了 provider 用法，不是宿主限制。升级后重跑这条即可，无需人工点界面。"
+      },
+      "status": "verified",
+      "verifiedBy": "Slots.listSubTree → occupants 含 {id:'tool-keeper', order:50, active:true}（2026-11-14 实测）",
+      "fallback": "设置页消失，模型工具 tool_keeper 仍是完整入口"
+    },
+    {
+      "id": "sym.cordis.original",
+      "surface": "package",
+      "ref": "Symbol.for('cordis.original')",
+      "code": "index.js:47",
+      "why": "traceable 代理把真实目标存在这个 symbol 下，补丁必须落到真实服务上",
+      "probe": {
+        "kind": "none",
+        "manual": "符号存在性只能读 cordis 源码（rc.2 在 cordis/src/utils.ts 实证）。行为替代证据：patched=true 且 tinyfish 41/43 被隐藏（2026-11-14 实测），说明补丁确实落到了真实服务上——落到代理上不会有这个效果。"
+      },
+      "status": "verified",
+      "fallback": "补丁落在代理上或装不上；后者会报 patched:false"
+    },
+    {
+      "id": "eng.dsh.range",
+      "surface": "package",
+      "ref": "engines.dsh",
+      "code": "package.json:51",
+      "why": "锁宿主版本范围；rc.3 必须落在范围内才算兼容",
+      "probe": {
+        "kind": "package",
+        "file": "package.json",
+        "path": ["engines", "dsh"],
+        "equals": ">=0.2.2-rc.2 <0.3.0-0"
+      },
+      "status": "verified",
+      "fallback": "范围写错会被宿主拒绝激活，或放过不兼容版本"
+    },
+    {
+      "id": "doc.host-contract",
+      "surface": "file",
+      "ref": "docs/HOST-CONTRACT.md 的查证版本行",
+      "code": "docs/HOST-CONTRACT.md:6",
+      "why": "文档声明的查证版本必须与实跑宿主一致，否则全文的证据等级失效",
+      "probe": {
+        "kind": "file",
+        "path": "docs/HOST-CONTRACT.md",
+        "contains": ["0.2.2-rc.3"]
+      },
+      "status": "verified",
+      "fallback": "拿 rc.2 的结论冒充 rc.3 仍然成立——证据等级在说谎"
+    }
+  ]
+}

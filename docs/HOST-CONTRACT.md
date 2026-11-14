@@ -3,8 +3,29 @@
 这个文件记录**「DSH 到底长什么样」**，每一条都带出处。
 改代码之前核对这里，不要凭印象，也不要凭上游文档——文档可能落后于实际运行版本。
 
-查证版本：`0.2.2-rc.2`。
+查证版本：`0.2.2-rc.3`（2026-11-14 复检）。历史查证：`0.2.2-rc.2`。
 授权的查询方式是 `cordis_inspect_query`（权威源），文档副本在 plugin-kit 包的 `host-skills/dsh-doc/`。
+逐条触点的清单与复检方法见 `touchpoints.json`，rc.3 的签名快照见 `host-snapshot.json`。
+
+### 怎么查——以及一条踩过的坑
+
+`cordis_inspect_query` 的 `input` 传参**是有效的**，两种查法都能用：
+
+```js
+// 精确 Service 契约（含方法签名、参数、返回类型）
+{ platform: 'host', provider: 'Service', method: 'listService', input: { service: 'webServer' } }
+
+// 精确 Slot 树（含 occupants，即谁挂了这个 slot）
+{ platform: 'client', provider: 'Slots', method: 'listSubTree', input: { root: 'settings.section' } }
+```
+
+> **坑**：2026-11-14 曾把「精确查询失败」记成宿主的限制（写成「input 传参一律被拒收、
+> occupants 不返回」），并据此把设置页 slot 那条判成 UNVERIFIABLE、降级用 `plugin_manager`
+> 间接验证。**实际是查询用法写错了**——换对 provider 与 input 之后，两条都能直接查，
+> occupants 也是完整的（`{id:'tool-keeper', order:50, active:true}` 一眼可见）。
+>
+> 教训：**判不了的时候，先怀疑自己的查法，别急着写「宿主不支持」。**
+> 一句错误的「宿主限制」会污染整条证据链，还会让后来人放弃机判改去手工点点点。
 
 ---
 

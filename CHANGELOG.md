@@ -2,6 +2,56 @@
 
 版本号只升到 `0.3.x`：私有项目，不上 npm，版本号用于标记本机安装的形态变化。
 
+## 0.3.19 — 2026-11-14
+
+### rc.3 升级保鲜：建立宿主触点清单
+
+按 AGENTS.md 交付前第 4 条跑完全流程。**首次建立两个持久文件**：
+
+- `touchpoints.json` —— 8 条宿主触点（服务 3 / 包 3 / slot 1 / 文档 1），
+  每条写明「为什么依赖它」「怎么机判」「判不了时用什么替代证据」「坏了怎么兜底」
+- `host-snapshot.json` —— rc.3 的关键签名快照，供下次升级比对漂移
+
+流程与结果：
+
+| 步骤 | 结果 |
+|---|---|
+| 宿主版本核实 | 安装包亲读 `0.2.2-rc.3`，落在 `engines.dsh` 范围内 |
+| `recheck.mjs --self-test` | 4 个反例全会红（先证明脚本会红，再用它判通过） |
+| 触点复检 | 0 FAIL |
+| 真机行为验收 | `patched=true`、`stale=false`、tinyfish 2/41、lexiang 0/7、context7 2、exa 4、core 49 |
+| `reextract.mjs --check` | dsh-doc 副本 FRESH |
+| 交付门 | 174 条测试全绿；preflight 7/9（0 FAIL / 2 UNVERIFIABLE）不变 |
+
+### 推翻一条错误的「宿主限制」
+
+上一轮把「精确查询失败」记成了宿主限制——写成「rc.2/rc.3 的 `cordis_inspect_query`
+对 `input` 传参一律拒收，Slots 全树不返回 occupant」，并据此把设置页 slot 那条
+判成 UNVERIFIABLE、降级用 `plugin_manager` 间接验证。
+
+**实测推翻**：
+
+```
+{ provider: 'Service', method: 'listService', input: { service: 'webServer' } }
+  → 返回完整方法签名、参数、返回类型、throws
+
+{ provider: 'Slots', method: 'listSubTree', input: { root: 'settings.section' } }
+  → 返回完整 occupants，其中 { id: 'tool-keeper', order: 50, active: true }
+```
+
+两条都能直接查。当时是查询用法写错了，不是宿主不支持。
+影响面：`host-snapshot.json` 的 `_comment`、`touchpoints.json` 里那条 UNVERIFIABLE 判断、
+以及基于它得出的「需要人工点设置页确认」——全部清掉，slot 那条改成真机判。
+
+### 顺带修掉的真实缺陷
+
+`touchpoints.json` 首次建立时写的行号引用已经漂了：`api.js:282` → 实际 331、
+`ui/client.js:658` → 实际 701。行号引用会被后续改动冲掉。
+
+修法不只是改数字——把纪律写进 AGENTS.md（引用代码位置优先用函数名）和
+TESTING.md（判不了先怀疑自己的查法）。
+
+174 条测试，preflight 7/9。
 ## 0.3.18 — 2026-11-14
 
 ### 对外文案改成大白话
