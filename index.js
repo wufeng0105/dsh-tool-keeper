@@ -21,7 +21,7 @@
  *    `tool-mask` 就是静默失效的典型。
  * 3. **冷启动即生效**（DESIGN「七、可靠性与已知风险」；这是 tool-mask 栽的地方）。补丁装在 `apply` 期间，早于任何 MCP 连接。
  *
- * @module @local/dsh-tool-keeper
+ * @module dsh-tool-keeper
  */
 
 import { readFileSync, writeFileSync, renameSync, mkdirSync } from 'node:fs';

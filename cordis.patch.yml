@@ -11,7 +11,7 @@
 # ⚠️ 两行的 name 前缀必须与 package.json 的 `name` 逐字一致，否则装完解析不到。
 - insert:
     - id: dsh-tool-keeper
-      name: '@local/dsh-tool-keeper'
+      name: 'dsh-tool-keeper'
       config: {}
     - id: dsh-tool-keeper-ui
       name: './ui/index.js'

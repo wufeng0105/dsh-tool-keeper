@@ -2,6 +2,26 @@
 
 版本号只升到 `0.3.x`：私有项目，不上 npm，版本号用于标记本机安装的形态变化。
 
+## 0.3.17 — 2026-11-14
+
+### 上架市场前的合规清理
+
+按 awesome-dsh-plugin 的收录指南逐条核对，修掉不合规项：
+
+- **包名 `@local/dsh-tool-keeper` → `dsh-tool-keeper`**：`@local/` 是「仅本地」语义，
+  市场收录与将来的 npm 发布都不合适（npm 上 `dsh-tool-keeper` 实测 404 可用）。
+  同步改 `cordis.patch.yml`、`index.js` 的 `@module` 注释、`docs/HOST-CONTRACT.md`
+- **去掉 `private: true`**：它堵死 npm 发布这条路，而指南推荐发 npm
+- **新增 `icon.png`（180×180 方形位图）**：指南明确拒收 SVG，市场卡片约 96px 显示。
+  用 System.Drawing 从原 SVG 的盾牌设计重绘，透明底、蓝色线条
+- **`package.json` 的 `icon` 字段与 `files` 列表**改为 `icon.png`
+- **仓库 description 更新**：原为旧名「Toolwarden · 工具守卫」
+- **仓库加 `dsh-plugin` / `dsh` / `mcp` / `tools` topic**：指南要求必须有 `dsh-plugin`
+- **`package.json` description 改英文**：市场条目要求 `description.en` 必填
+
+`icon.svg` 保留（宿主观感用），市场卡片用 `icon.png`。
+
+174 条测试，preflight 7/9（0 FAIL / 2 UNVERIFIABLE）。
 ## 0.3.16 — 2026-11-14
 
 ### 审计复核（第二轮）的六处新伤，全部修复

@@ -130,7 +130,7 @@ ctx.inject(['webServer'], (inner) => {
 
 | 用途 | patch 里的 `name` | 解析规则 |
 |---|---|---|
-| 宿主半（`index.js`） | 包名 `@local/dsh-tool-keeper` | **必须与 `package.json` 的 `name` 逐字一致** |
+| 宿主半（`index.js`） | 包名 `dsh-tool-keeper` | **必须与 `package.json` 的 `name` 逐字一致** |
 | 浏览器半（`ui/`） | 相对路径 `./ui/index.js` | 相对**本包目录**解析，指向一个**自己的 `package.json`** |
 
 浏览器半之所以要独立成一个包（`ui/package.json` 声明 `dsh.client.platform: "web"` + `exports["./client"]`），
