@@ -95,7 +95,7 @@ function readStatus(state) {
 // 基本装配
 // ─────────────────────────────────────────────
 test('index: apply 不抛，且 provide 出状态', () => {
-  const { dir, configPath } = makeDir({ enabled: true, servers: {}, tools: {}, rewrite: {} });
+  const { dir, configPath } = makeDir({ servers: {}, tools: {}, rewrite: {} });
   const { ctx, state } = makeCtx();
   assert.doesNotThrow(() => apply(ctx, { configPath }));
   assert.ok(state.provided.tool_keeper !== undefined);
@@ -107,14 +107,13 @@ test('index: 配置不存在时自动写一份空基线', () => {
   const { ctx } = makeCtx();
   apply(ctx, { configPath });
   const saved = JSON.parse(readFileSync(configPath, 'utf8'));
-  assert.equal(saved.enabled, true);
   assert.deepEqual(saved.tools, {}, '基线不管理任何工具');
   assert.deepEqual(saved.servers, {}, '基线不预设服务器规则');
   rmSync(dir, { recursive: true, force: true });
 });
 
 test('index: 只包装一次 register，且卸载后还原', () => {
-  const { dir, configPath } = makeDir({ enabled: true, servers: {}, tools: {}, rewrite: {} });
+  const { dir, configPath } = makeDir({ servers: {}, tools: {}, rewrite: {} });
   const { ctx, state, tools } = makeCtx();
   const original = tools.register;
   apply(ctx, { configPath });
@@ -129,7 +128,6 @@ test('index: 只包装一次 register，且卸载后还原', () => {
 
 test('index: 注册的工具被判定后进入 registry 或不被注册', () => {
   const { dir, configPath } = makeDir({
-    enabled: true,
     servers: {},
     tools: { 'mcp__x__y': 'drop' },
     rewrite: {},
@@ -163,48 +161,8 @@ test('index: 保护工具即使配置写 drop 也放行', () => {
 // ─────────────────────────────────────────────
 // 总开关（审计 H5：禁用后不能连恢复入口一起消失）
 // ─────────────────────────────────────────────
-test('index: enabled=false 时不装补丁，但模型工具与设置页 API 仍在', () => {
-  const { dir, configPath } = makeDir({
-    enabled: false, servers: {}, tools: {}, rewrite: {},
-  });
-  const { ctx, state, tools } = makeCtx();
-  const original = tools.register;
-  apply(ctx, { configPath });
-
-  // 不装补丁：register 保持原样
-  assert.equal(tools.register, original, '禁用时不应包装 register');
-
-  // 但恢复入口必须在：tool-keeper 工具
-  assert.ok(state.registered.some(d => d.name === 'tool_keeper'),
-    '禁用后仍必须注册 tool-keeper 工具，否则用户没有恢复入口');
-
-  // 设置页 API 也必须在
-  assert.ok(state.route !== undefined, '禁用后仍必须挂载 /tool-keeper/api');
-
-  const status = readStatus(state);
-  assert.equal(status.patched, false);
-  assert.match(String(status.reason), /disabled/);
-  rmSync(dir, { recursive: true, force: true });
-});
-
-test('index: enabled=false 时诊断为空（没有规则生效，报错是噪音）', () => {
-  const { dir, configPath } = makeDir({
-    enabled: false,
-    servers: { ghost: { enabled: false } },
-    tools: {}, rewrite: {},
-  });
-  const { ctx, state } = makeCtx();
-  apply(ctx, { configPath });
-  const status = readStatus(state);
-  assert.deepEqual(status.diagnostics, []);
-  rmSync(dir, { recursive: true, force: true });
-});
-
-// ─────────────────────────────────────────────
-// 失败可见（DESIGN「已知风险与退路」的统一兜底）
-// ─────────────────────────────────────────────
 test('index: tools 服务缺失时报 patched:false 且不抛', () => {
-  const { dir, configPath } = makeDir({ enabled: true, servers: {}, tools: {}, rewrite: {} });
+  const { dir, configPath } = makeDir({ servers: {}, tools: {}, rewrite: {} });
   const { ctx, state } = makeCtx();
   // get('tools') 与 ctx.tools 都给不到；logger 仍要记录，否则验不了告警
   ctx.tools = undefined;
@@ -215,7 +173,7 @@ test('index: tools 服务缺失时报 patched:false 且不抛', () => {
   assert.doesNotThrow(() => apply(ctx, { configPath }));
   const status = readStatus(state);
   assert.equal(status.patched, false);
-  assert.match(String(status.reason), /unavailable/);
+  assert.match(String(status.reason), /没有可用的工具服务/);
   // 失败必须同时进日志：只靠状态字段，插件的日志里就看不出为什么没生效
   assert.ok(state.warnings.some(w => /could not install the registration patch/.test(w)),
     '补丁失败必须留下告警日志');
@@ -223,7 +181,7 @@ test('index: tools 服务缺失时报 patched:false 且不抛', () => {
 });
 
 test('index: 补丁装不上时设置页 API 仍然挂载', () => {
-  const { dir, configPath } = makeDir({ enabled: true, servers: {}, tools: {}, rewrite: {} });
+  const { dir, configPath } = makeDir({ servers: {}, tools: {}, rewrite: {} });
   const { ctx, state } = makeCtx();
   // 没有 tools 服务：补丁装不上，工具也注册不了（注册工具本身就要 tools 服务）
   ctx.tools = undefined;
@@ -234,20 +192,18 @@ test('index: 补丁装不上时设置页 API 仍然挂载', () => {
   assert.ok(state.route !== undefined, '补丁失败时设置页 API 仍要挂载，作为排查入口');
   const status = readStatus(state);
   assert.equal(status.patched, false);
-  assert.match(String(status.reason), /unavailable/);
+  assert.match(String(status.reason), /没有可用的工具服务/);
   rmSync(dir, { recursive: true, force: true });
 });
 
 // ─────────────────────────────────────────────
 // 参数名没命中时的诊断（审计发现：全未命中会被静默吞掉）
 //
-// 注意：这些用例必须用**内置工具名**（不带 mcp__ 前缀），
-// 因为 MCP 工具会先过「未知服务器一律放行」那一关，
-// 测试环境里 readKnownServers 读不到假的服务器名，规则根本不会走到 rewrite 分支。
+// 这些用例用内置工具名（不带 mcp__ 前缀）：判定已不依赖宿主声明的服务器，
+// 内置名只是让「参数改写」这条路径更直观，不涉及任何服务器特判。
 // ─────────────────────────────────────────────
 test('index: rewrite 只配参数且参数名全部不存在时，诊断必须报出来', () => {
   const { dir, configPath } = makeDir({
-    enabled: true,
     servers: {},
     tools: {},
     rewrite: {
@@ -274,7 +230,6 @@ test('index: rewrite 只配参数且参数名全部不存在时，诊断必须�
 
 test('index: 参数部分命中时，命中的不算错、未命中的报错', () => {
   const { dir, configPath } = makeDir({
-    enabled: true,
     servers: {},
     tools: {},
     rewrite: {
@@ -296,7 +251,7 @@ test('index: 参数部分命中时，命中的不算错、未命中的报错', (
 });
 
 test('index: 服务被冻结时如实报 patched:false，不假装装上了', () => {
-  const { dir, configPath } = makeDir({ enabled: true, servers: {}, tools: {}, rewrite: {} });
+  const { dir, configPath } = makeDir({ servers: {}, tools: {}, rewrite: {} });
   const { ctx, state } = makeCtx();
   // 冻结的 tools：Reflect.set 会失败。必须检查「补丁是否真的生效」，
   // 否则会在没装上的情况下继续声称自己在过滤。
@@ -308,7 +263,7 @@ test('index: 服务被冻结时如实报 patched:false，不假装装上了', ()
   assert.doesNotThrow(() => apply(ctx, { configPath }));
   const status = readStatus(state);
   assert.equal(status.patched, false, '冻结服务上不可能装上补丁');
-  assert.match(String(status.reason), /frozen|proxied/i);
+  assert.match(String(status.reason), /冻结|代理/);
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -329,7 +284,7 @@ test('index: 配置损坏时按全放行跑，并报出来', () => {
 test('index: 状态里不再有统计计数', () => {
   // 这些计数原本数的是 register() 调用次数，与实际工具数不一致
   // （实测 stats.total=172 而真实工具 105 个），没有消费者，还自相矛盾，已删除。
-  const { dir, configPath } = makeDir({ enabled: true, servers: {}, tools: {}, rewrite: {} });
+  const { dir, configPath } = makeDir({ servers: {}, tools: {}, rewrite: {} });
   const { ctx, state } = makeCtx();
   apply(ctx, { configPath });
   const status = readStatus(state);

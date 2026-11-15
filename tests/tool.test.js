@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync, writeFileSync, existsSync, rmSync } from 'no
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { registerTool } from '../tool.js';
-import { createBaselineConfig, BASELINE_DROP, BASELINE_SERVERS } from '../baseline.js';
+import { createBaselineConfig } from '../baseline.js';
 import { normalizeConfig, ToolCatalog } from '../rules.js';
 
 /** 建一个临时目录当 DSH_HOME。 */
@@ -41,7 +41,7 @@ function makeDeps(configPath) {
   catalog.record({ name: 'mcp__tinyfish__search', description: 'search desc', parameters: { a: 1 } });
   catalog.record({ name: 'read', description: 'read desc', parameters: {} });
   const snapshot = () => ({
-    patched: true, enabled: true, configPath,
+    patched: true, configPath,
     diagnostics: [], problems: [],
   });
   const log = { info() {}, warn() {} };
@@ -70,10 +70,10 @@ test('tool: 注册名是 tool-keeper（保护名单已预留）', () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('tool: 7 个 action 全部列在 enum 里', () => {
+test('tool: 6 个 action 全部列在 enum 里', () => {
   const { definition, dir } = setup();
   const action = definition.parameters.properties.action;
-  assert.deepEqual([...action.enum].sort(), ['enable', 'list', 'reset', 'rewrite', 'server', 'status', 'tool'].sort());
+  assert.deepEqual([...action.enum].sort(), ['list', 'reset', 'rewrite', 'server', 'status', 'tool'].sort());
   assert.deepEqual(definition.parameters.required, ['action']);
   rmSync(dir, { recursive: true, force: true });
 });
@@ -106,40 +106,34 @@ test('tool: list 按来源分组并给出字符数', async () => {
 // ─────────────────────────────────────────────
 // server
 // ─────────────────────────────────────────────
-test('tool: server + keep 写入白名单', async () => {
-  const { definition, configPath, dir } = setup();
-  await definition.execute({ action: 'server', server: 'exa', keep: ['web_search_exa'] });
-  const c = readConfig(configPath);
-  assert.deepEqual(c.servers.exa.keep, ['web_search_exa']);
-  rmSync(dir, { recursive: true, force: true });
-});
-
-test('tool: server + 空 keep = 关闭该服务器全部工具', async () => {
-  const { definition, configPath, dir } = setup();
-  await definition.execute({ action: 'server', server: 'context7', keep: [] });
-  const c = readConfig(configPath);
-  assert.equal(c.servers.context7.enabled, false);
-  rmSync(dir, { recursive: true, force: true });
-});
-
-test('tool: server 省略 keep = 移除规则（全部保留）', async () => {
-  const { definition, configPath, dir } = setup();
-  writeFileSync(configPath, JSON.stringify({ servers: { exa: { keep: ['a'] } }, tools: {}, rewrite: {} }));
-  await definition.execute({ action: 'server', server: 'exa' });
-  const c = readConfig(configPath);
-  assert.equal(c.servers.exa, undefined, 'exa 规则应被移除');
-  rmSync(dir, { recursive: true, force: true });
-});
-
 test('tool: server 缺 server 参数时抛错', async () => {
   const { definition, dir } = setup();
   await assert.rejects(() => definition.execute({ action: 'server' }), /需要 server/);
   rmSync(dir, { recursive: true, force: true });
 });
 
-// ─────────────────────────────────────────────
-// tool
-// ─────────────────────────────────────────────
+test('tool: server 开关只动上架层，往返不碰逐工具规则', async () => {
+  const { definition, configPath, dir } = setup();
+  writeFileSync(configPath, JSON.stringify({ servers: {}, tools: { 'mcp__rea__x': 'drop' }, rewrite: {} }));
+  await definition.execute({ action: 'server', server: 'rea', enabled: false });
+  let c = readConfig(configPath);
+  assert.deepEqual(c.servers.rea, { enabled: false });
+  assert.equal(c.tools['mcp__rea__x'], 'drop', '关整台不能碰逐工具规则');
+  await definition.execute({ action: 'server', server: 'rea', enabled: true });
+  c = readConfig(configPath);
+  assert.equal(c.servers.rea, undefined, '开回来删掉停用标记');
+  assert.equal(c.tools['mcp__rea__x'], 'drop', '逐工具规则原样保留');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('tool: server 传 keep 被拒绝并说明已移除', async () => {
+  const { definition, dir } = setup();
+  await assert.rejects(
+    () => definition.execute({ action: 'server', server: 'rea', keep: ['x'] }),
+    (error) => error.code === 'EINVALID',
+  );
+  rmSync(dir, { recursive: true, force: true });
+});
 test('tool: drop 单个工具', async () => {
   const { definition, configPath, dir } = setup();
   await definition.execute({ action: 'tool', name: 'mcp__tinyfish__search', state: 'drop' });
@@ -218,27 +212,12 @@ test('tool: rewrite 缺 name 时抛错', async () => {
 // ─────────────────────────────────────────────
 // enable / reset
 // ─────────────────────────────────────────────
-test('tool: enable false 写入总开关', async () => {
-  const { definition, configPath, dir } = setup();
-  await definition.execute({ action: 'enable', value: false });
-  const c = readConfig(configPath);
-  assert.equal(c.enabled, false);
-  rmSync(dir, { recursive: true, force: true });
-});
-
-test('tool: enable 需要布尔值', async () => {
-  const { definition, dir } = setup();
-  await assert.rejects(() => definition.execute({ action: 'enable' }), /value/);
-  rmSync(dir, { recursive: true, force: true });
-});
-
 test('tool: reset 恢复出厂基线并留备份', async () => {
   const { definition, configPath, dir } = setup();
-  writeFileSync(configPath, JSON.stringify({ enabled: false, servers: {}, tools: { x: 'drop' }, rewrite: {} }));
+  writeFileSync(configPath, JSON.stringify({ servers: {}, tools: { x: 'drop' }, rewrite: {} }));
   const r = await definition.execute({ action: 'reset' });
   assert.equal(r.ok, true);
   const c = readConfig(configPath);
-  assert.equal(c.enabled, true);
   assert.deepEqual(Object.keys(c.tools), [], '基线不关内置工具');
   assert.ok(r.note.includes('备份'));
   rmSync(dir, { recursive: true, force: true });
@@ -255,13 +234,13 @@ test('tool: 未知 action 抛错', async () => {
 // ─────────────────────────────────────────────
 test('端到端: tool 写出的配置能被 normalizeConfig 解析', async () => {
   const { definition, configPath, dir } = setup();
-  await definition.execute({ action: 'server', server: 'tinyfish', keep: ['search', 'fetch_content'] });
+  await definition.execute({ action: 'server', server: 'tinyfish', enabled: false });
   await definition.execute({
     action: 'rewrite', name: 'mcp__tinyfish__fetch_content', target: 'description', text: '读正文',
   });
   const { rules, problems } = normalizeConfig(readConfig(configPath));
   assert.deepEqual(problems, []);
-  assert.deepEqual([...rules.serverKeep.get('tinyfish')], ['search', 'fetch_content']);
+  assert.equal(rules.disabledServers.has('tinyfish'), true);
   assert.equal(rules.rewrites.get('mcp__tinyfish__fetch_content').description, '读正文');
   rmSync(dir, { recursive: true, force: true });
 });
@@ -270,13 +249,13 @@ test('端到端: tool 写出的配置能被 normalizeConfig 解析', async () =>
 // baseline —— 出厂不做任何管理
 // ─────────────────────────────────────────────
 test('baseline: 出厂不关任何内置工具', () => {
-  assert.deepEqual([...BASELINE_DROP], [], '内置工具默认全开');
+  assert.deepEqual(createBaselineConfig().tools, {}, '内置工具默认全开');
   const c = createBaselineConfig();
   assert.deepEqual(Object.keys(c.tools), []);
 });
 
 test('baseline: 出厂不对任何 MCP 服务器设规则', () => {
-  assert.deepEqual(Object.keys(BASELINE_SERVERS), [], '出厂不预设服务器规则');
+  assert.deepEqual(createBaselineConfig().servers, {}, '出厂不预设服务器规则');
   const c = createBaselineConfig();
   assert.deepEqual(Object.keys(c.servers), []);
 });
@@ -286,17 +265,14 @@ test('baseline: 出厂不预设任何改写', () => {
   assert.deepEqual(Object.keys(c.rewrite), []);
 });
 
-test('baseline: 默认启用，可显式关闭', () => {
-  assert.equal(createBaselineConfig().enabled, true);
-  assert.equal(createBaselineConfig({ enabled: false }).enabled, false);
+test('baseline: 不再有全局开关字段', () => {
+  assert.equal('enabled' in createBaselineConfig(), false);
 });
 
 test('baseline: 空配置解析后不隐藏任何工具', () => {
   const { rules, problems } = normalizeConfig(createBaselineConfig());
   assert.deepEqual(problems, []);
-  assert.equal(rules.enabled, true);
   assert.equal(rules.disabledServers.size, 0);
-  assert.equal(rules.serverKeep.size, 0);
   assert.equal(rules.toolOverrides.size, 0);
   assert.equal(rules.rewrites.size, 0);
 });
@@ -306,7 +282,7 @@ test('baseline: 空配置解析后不隐藏任何工具', () => {
 test('tool: 非法输入不会落盘', async () => {
   const { definition, configPath, dir } = setup();
   // 先做一次合法写入，让配置文件存在，后面才能比对「一个字都没变」
-  await definition.execute({ action: 'enable', value: true });
+  await definition.execute({ action: 'tool', name: 'mcp__a__b', state: 'drop' });
   const before = readFileSync(configPath, 'utf8');
 
   // text 不是字符串：由参数校验直接挡住（比写前校验更早一层）
@@ -322,11 +298,11 @@ test('tool: 非法输入不会落盘', async () => {
 
 test('tool: 危险键写入被拒绝', async () => {
   const { definition, configPath, dir } = setup();
-  await definition.execute({ action: 'enable', value: true });
+  await definition.execute({ action: 'tool', name: 'mcp__a__b', state: 'drop' });
   const before = readFileSync(configPath, 'utf8');
 
   await assert.rejects(
-    () => definition.execute({ action: 'server', server: '__proto__', keep: ['x'] }),
+    () => definition.execute({ action: 'server', server: '__proto__', enabled: false }),
     (error) => error.code === 'EINVALID',
     '原型链键必须被拒绝',
   );
@@ -336,9 +312,9 @@ test('tool: 危险键写入被拒绝', async () => {
 
 test('tool: 正常写入仍然成功', async () => {
   const { definition, configPath, dir } = setup();
-  const r = await definition.execute({ action: 'server', server: 'tinyfish', keep: ['search'] });
+  const r = await definition.execute({ action: 'server', server: 'tinyfish', enabled: false });
   assert.equal(r.ok, true);
   const saved = JSON.parse(readFileSync(configPath, 'utf8'));
-  assert.deepEqual(saved.servers.tinyfish.keep, ['search']);
+  assert.equal(saved.servers.tinyfish.enabled, false);
   rmSync(dir, { recursive: true, force: true });
 });

@@ -13,7 +13,11 @@
         "kind": "service",
         "service": "tools",
         "method": "register",
-        "signatureIncludes": ["register(definition: ToolDefinition", "ToolRegistrationOptions", "=> void"]
+        "signatureIncludes": [
+          "register(definition: ToolDefinition",
+          "ToolRegistrationOptions",
+          "=> void"
+        ]
       },
       "status": "verified",
       "fallback": "patched:false，界面红条「拦截补丁未安装」，全部工具放行"
@@ -28,7 +32,10 @@
         "kind": "service",
         "service": "webServer",
         "method": "register",
-        "signatureIncludes": ["register(route: WebRoute | WebResourceRoute)", "=> void"]
+        "signatureIncludes": [
+          "register(route: WebRoute | WebResourceRoute)",
+          "=> void"
+        ]
       },
       "status": "verified",
       "fallback": "设置页读不到数据（fetch 失败），模型工具 tool_keeper 仍可用"
@@ -55,7 +62,9 @@
       "probe": {
         "kind": "package",
         "file": "package.json",
-        "path": ["name"],
+        "path": [
+          "name"
+        ],
         "equals": "dsh-tool-keeper"
       },
       "status": "verified",
@@ -97,7 +106,10 @@
       "probe": {
         "kind": "package",
         "file": "package.json",
-        "path": ["engines", "dsh"],
+        "path": [
+          "engines",
+          "dsh"
+        ],
         "equals": ">=0.2.2-rc.2 <0.3.0-0"
       },
       "status": "verified",
@@ -112,10 +124,26 @@
       "probe": {
         "kind": "file",
         "path": "docs/HOST-CONTRACT.md",
-        "contains": ["0.2.2-rc.3"]
+        "contains": [
+          "0.2.2-rc.3"
+        ]
       },
       "status": "verified",
       "fallback": "拿 rc.2 的结论冒充 rc.3 仍然成立——证据等级在说谎"
+    },
+    {
+      "id": "name.mcp-tool-format",
+      "surface": "convention",
+      "ref": "mcp__<server>__<leaf>",
+      "code": "rules.js 的 splitMcpName / groupOf",
+      "why": "判定服务器归属的唯一来源。命名约定变了（前缀、分隔符），所有 servers.* 规则会整体失效；这是 P2 原则「不猜宿主」的地基",
+      "probe": {
+        "kind": "none",
+        "rationale": "命名约定由宿主的 MCP client 生成，不启动宿主时无法验证当前版本仍用 mcp__<server>__<leaf>",
+        "alternative": "真机 A12：把某台服务器换一种声明方式重启，规则仍按配置生效；以及 state.groups 的分组名正确"
+      },
+      "status": "verified",
+      "fallback": "约定漂移时规则整体失效但不会误杀：工具名解析不出 server 就按内置工具处理（不套服务器规则），同时诊断会报「条目匹配不到工具」"
     }
   ]
 }

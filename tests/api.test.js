@@ -65,7 +65,7 @@ function makeDeps(configPath) {
     configPath,
     catalog,
     snapshot: () => ({
-      patched: true, enabled: true, configPath,
+      patched: true, configPath,
       problems: [], diagnostics: [],
     }),
     log: { info() {}, warn() {} },
@@ -205,6 +205,7 @@ function findRole(state, name) {
 }
 
 test('api: 每个工具都带 effective 与 source', async () => {
+
   const { captured, dir, dispose } = setup();
   const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
   const all = r.json.groups.flatMap(g => g.roles);
@@ -220,7 +221,6 @@ test('api: 每个工具都带 effective 与 source', async () => {
 test('api: 服务器白名单会反映到 effective（页面不会把被丢的显示成开）', async () => {
   const { captured, configPath, dir, dispose } = setup();
   writeFileSync(configPath, JSON.stringify({
-    enabled: true,
     servers: { tinyfish: { keep: ['search'] } },
     tools: {}, rewrite: {},
   }));
@@ -238,10 +238,9 @@ test('api: 服务器白名单会反映到 effective（页面不会把被丢的�
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('api: 服务器总开关关闭时，该服务器工具 effective=drop 且 source=server', async () => {
+test('api: 服务器总开关关闭时，该服务器工具 effective=drop 且 source=server-disabled', async () => {
   const { captured, configPath, dir, dispose } = setup();
   writeFileSync(configPath, JSON.stringify({
-    enabled: true,
     servers: { tinyfish: { enabled: false } },
     tools: {}, rewrite: {},
   }));
@@ -249,7 +248,7 @@ test('api: 服务器总开关关闭时，该服务器工具 effective=drop 且 s
   const role = findRole(r.json, 'mcp__tinyfish__search');
   assert.ok(role !== undefined);
   assert.equal(role.effective, 'drop', '服务器被关掉，工具应判定为丢');
-  assert.equal(role.source, 'server', '来源要标明是服务器级规则');
+  assert.equal(role.source, 'server-disabled', '来源要标明是服务器总开关');
   dispose();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -257,15 +256,14 @@ test('api: 服务器总开关关闭时，该服务器工具 effective=drop 且 s
 test('api: 服务器总开关压过单工具 keep（关 = 一个不剩）', async () => {
   const { captured, configPath, dir, dispose } = setup();
   writeFileSync(configPath, JSON.stringify({
-    enabled: true,
     servers: { tinyfish: { enabled: false } },
     tools: { 'mcp__tinyfish__search': 'keep' },
     rewrite: {},
   }));
   const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
   const role = findRole(r.json, 'mcp__tinyfish__search');
-  assert.equal(role.effective, 'drop', '总开关关闭时 keep 条目不得漏网（0.3.20 语义）');
-  assert.equal(role.source, 'server');
+  assert.equal(role.effective, 'drop', '总开关关闭时 keep 条目不得漏网');
+  assert.equal(role.source, 'server-disabled');
   dispose();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -299,7 +297,7 @@ test('api: 磁盘配置与启动指纹不同时报 stale=true', async () => {
   const captured = { route: undefined };
   const dir = mkdtempSync(join(tmpdir(), 'tool-keeper-stale-'));
   const configPath = join(dir, 'tool-keeper.json');
-  writeFileSync(configPath, JSON.stringify({ enabled: true, servers: {}, tools: {}, rewrite: {} }));
+  writeFileSync(configPath, JSON.stringify({ servers: {}, tools: {}, rewrite: {} }));
 
   // 模拟「启动时」的指纹：把它设成与当前磁盘内容不同
   const ctx = {
@@ -315,7 +313,7 @@ test('api: 磁盘配置与启动指纹不同时报 stale=true', async () => {
     configPath,
     catalog: new ToolCatalog(),
     snapshot: () => ({
-      patched: true, enabled: true, configPath,
+      patched: true, configPath,
       loadedHash: 'deadbeefdeadbeef', // 与磁盘内容不可能相同
       problems: [], diagnostics: [],
     }),
@@ -333,7 +331,7 @@ test('api: 没有启动指纹时 stale=false（不瞎报）', async () => {
   const captured = { route: undefined };
   const dir = mkdtempSync(join(tmpdir(), 'tool-keeper-stale2-'));
   const configPath = join(dir, 'tool-keeper.json');
-  writeFileSync(configPath, JSON.stringify({ enabled: true }));
+  writeFileSync(configPath, JSON.stringify({}));
 
   const ctx = {
     inject(_n, cb) {
@@ -361,7 +359,7 @@ test('api: 没有启动指纹时 stale=false（不瞎报）', async () => {
 // ─────────────────────────────────────────────
 test('api: set 写入 tools 并返回 needRestart', async () => {
   const { captured, configPath, dir, dispose } = setup();
-  writeFileSync(configPath, JSON.stringify({ enabled: true, servers: {}, tools: {}, rewrite: {} }));
+  writeFileSync(configPath, JSON.stringify({ servers: {}, tools: {}, rewrite: {} }));
   const r = await callHandler(captured.route.handler, 'POST', {
     op: 'set', tools: { 'mcp__tinyfish__search': 'drop' },
   });
@@ -376,7 +374,6 @@ test('api: set 写入 tools 并返回 needRestart', async () => {
 test('api: set 保留未提交的字段（不整体覆盖）', async () => {
   const { captured, configPath, dir, dispose } = setup();
   writeFileSync(configPath, JSON.stringify({
-    enabled: true,
     servers: { tinyfish: { keep: ['search'] } },
     tools: {},
     rewrite: { 'mcp__x__y': '旧改写' },
@@ -395,7 +392,7 @@ test('api: set 拒绝非法类型', async () => {
   assert.equal(r.status, 400);
   assert.equal(r.json.code, 'EBADARG');
 
-  r = await callHandler(captured.route.handler, 'POST', { op: 'set', enabled: 'yes' });
+  r = await callHandler(captured.route.handler, 'POST', { op: 'set', servers: [] });
   assert.equal(r.status, 400);
   dispose();
   rmSync(dir, { recursive: true, force: true });
@@ -403,7 +400,7 @@ test('api: set 拒绝非法类型', async () => {
 
 test('api: set 拒绝会写出问题的配置（保护用户不被自己写坏）', async () => {
   const { captured, configPath, dir, dispose } = setup();
-  writeFileSync(configPath, JSON.stringify({ enabled: true, servers: {}, tools: {}, rewrite: {} }));
+  writeFileSync(configPath, JSON.stringify({ servers: {}, tools: {}, rewrite: {} }));
   const r = await callHandler(captured.route.handler, 'POST', {
     op: 'set', rewrite: { 'mcp__a__b': 12345 },
   });
@@ -415,20 +412,42 @@ test('api: set 拒绝会写出问题的配置（保护用户不被自己写坏�
   rmSync(dir, { recursive: true, force: true });
 });
 
+test('api: state 的 servers 只带 enabled，整块写回不丢其他停用服务器', async () => {
+  const { captured, configPath, dir, dispose } = setup();
+  writeFileSync(configPath, JSON.stringify({
+    servers: { tinyfish: { enabled: false }, lexiang: { enabled: false } },
+    tools: {}, rewrite: {},
+  }));
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  assert.deepEqual(r.json.rules.servers, {
+    tinyfish: { enabled: false },
+    lexiang: { enabled: false },
+  }, 'state 必须回全量服务器条目，界面才能安全整块写回');
+
+  // 模拟界面：把 tinyfish 打开，整块提交 servers
+  const next = { ...r.json.rules.servers };
+  delete next.tinyfish;
+  const w = await callHandler(captured.route.handler, 'POST', { op: 'set', servers: next });
+  assert.equal(w.status, 200);
+  const saved = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.deepEqual(saved.servers, { lexiang: { enabled: false } }, '另一台的停用状态不能被抹掉');
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
 // ─────────────────────────────────────────────
 // op = reset / 未知
 // ─────────────────────────────────────────────
 test('api: reset 恢复空基线并留备份', async () => {
   const { captured, configPath, dir, dispose } = setup();
   writeFileSync(configPath, JSON.stringify({
-    enabled: false, servers: {}, tools: { x: 'drop' }, rewrite: {},
+    servers: {}, tools: { x: 'drop' }, rewrite: {},
   }));
   const r = await callHandler(captured.route.handler, 'POST', { op: 'reset' });
   assert.equal(r.status, 200);
   assert.ok(r.json.backup, '必须留备份');
   assert.ok(existsSync(r.json.backup), '备份文件应真实存在');
   const saved = JSON.parse(readFileSync(configPath, 'utf8'));
-  assert.equal(saved.enabled, true);
   assert.deepEqual(saved.tools, {}, '基线不管理任何工具');
   dispose();
   rmSync(dir, { recursive: true, force: true });
@@ -483,7 +502,6 @@ test('api: export 在配置不存在时导出空基线而不是失败', async ()
   const { captured, dir, dispose } = setup();
   const r = await callHandler(captured.route.handler, 'POST', { op: 'export' });
   assert.equal(r.status, 200);
-  assert.equal(r.json.config.enabled, true);
   assert.deepEqual(r.json.config.servers, {});
   dispose();
   rmSync(dir, { recursive: true, force: true });
@@ -512,10 +530,10 @@ test('api: import 拒绝非对象', async () => {
 
 test('api: import 拒绝有问题的配置且不落盘', async () => {
   const { captured, configPath, dir, dispose } = setup();
-  writeFileSync(configPath, JSON.stringify({ enabled: true, servers: {}, tools: {}, rewrite: {} }));
+  writeFileSync(configPath, JSON.stringify({ servers: {}, tools: {}, rewrite: {} }));
   const before = readFileSync(configPath, 'utf8');
   // servers 里有危险的 __proto__ 键（JSON.parse 构造才能走到这层）
-  const bad = JSON.parse('{"enabled":true,"servers":{"__proto__":{"enabled":false}},"tools":{},"rewrite":{}}');
+  const bad = JSON.parse('{"servers":{"__proto__":{"enabled":false}},"tools":{},"rewrite":{}}');
   const r = await callHandler(captured.route.handler, 'POST', { op: 'import', config: bad });
   assert.equal(r.status, 400);
   assert.equal(r.json.code, 'EINVALID');
@@ -524,24 +542,24 @@ test('api: import 拒绝有问题的配置且不落盘', async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('api: import 整份替换并留备份', async () => {
+test('api: import 整份替换并留备份，返回备份文件名', async () => {
   const { captured, configPath, dir, dispose } = setup();
   writeFileSync(configPath, JSON.stringify({
     enabled: true, servers: {}, tools: { 'mcp__a__b': 'drop' }, rewrite: {},
   }));
   const incoming = {
-    enabled: false,
-    servers: { tinyfish: { keep: ['search'] } },
+    servers: { tinyfish: { enabled: false } },
     tools: {},
     rewrite: { 'mcp__x__y': '改过的说明' },
   };
   const r = await callHandler(captured.route.handler, 'POST', { op: 'import', config: incoming });
   assert.equal(r.status, 200);
   assert.equal(r.json.needRestart, true);
+  assert.ok(typeof r.json.backup === 'string' && r.json.backup.includes('tool-keeper.json.bak-'),
+    '响应要带备份文件名，用户才知道去哪回退');
 
   const saved = JSON.parse(readFileSync(configPath, 'utf8'));
-  assert.equal(saved.enabled, false);
-  assert.deepEqual(saved.servers.tinyfish.keep, ['search']);
+  assert.deepEqual(saved.servers.tinyfish, { enabled: false }, '导入的服务器停用状态要落盘');
   assert.deepEqual(saved.tools, {}, 'tools 必须被整份替换，不能残留旧的');
   assert.equal(saved.rewrite['mcp__x__y'], '改过的说明');
 
@@ -554,12 +572,23 @@ test('api: import 整份替换并留备份', async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+test('api: 超过 256KB 的请求返回人话错误，不再抛内部异常', async () => {
+  const { captured, dir, dispose } = setup();
+  const big = 'x'.repeat(300 * 1024);
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'import', config: { blob: big } });
+  assert.equal(r.status, 413);
+  assert.equal(r.json.code, 'ETOOLARGE');
+  assert.ok(r.json.message.includes('256KB'), '要告诉用户限制是多少：' + r.json.message);
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test('api: import 只落认可的五个字段，不照抄任意键', async () => {
   const { captured, configPath, dir, dispose } = setup();
   const r = await callHandler(captured.route.handler, 'POST', {
     op: 'import',
     config: {
-      enabled: true, servers: {}, tools: {}, rewrite: {},
+      servers: {}, tools: {}, rewrite: {},
       evil: '恶意字段', nested: { deep: true },
     },
   });

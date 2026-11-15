@@ -1,0 +1,7 @@
+0.4.1: two switches only, single config I/O module, current-state docs
+
+- 删除白名单 servers.*.keep 与插件自己的全局开关 enabled；只剩服务器开关 + 单工具开关
+- 配置读写收拢到 config.js（读解析 / 写前校验 / 原子写 / 备份各一份）
+- 诊断按服务器聚合；旧字段出现即报错；tool_keeper server 只接受 enabled
+- 全部文档与代码注释按当前状态重写，删除来历与改版过程
+- 178 条测试全绿，preflight 0 FAIL

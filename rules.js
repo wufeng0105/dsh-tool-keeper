@@ -18,11 +18,19 @@
  *
  * ## 优先级（DESIGN「规则冲突时听谁的」）
  *
- *   保护名单  >  服务器总开关  >  单工具规则  >  服务器白名单
+ *   保护名单  >  服务器总开关  >  单工具规则
  *
- * 服务器总开关压过一切逐条规则：它是「整台服务器取消注册」的一层覆盖，
- * 关闭时 keep 条目（单工具规则与白名单）不得漏网 —— 否则"关 = 一个不剩"
- * 就是一句空话（0.3.20 用户确认的语义）。
+ * 三条边界：
+ * 两条边界：
+ * - 服务器总开关是「整台取消注册」的物理闸，压过一切逐条规则（关 = 一个不剩）。
+ * - 单工具规则是唯一的选择层：没明确 drop 的默认 keep；keep 与 rewrite 正交
+ *   （工具没被隐藏时，改写仍然生效）。
+ *
+ * 本模块不提供「白名单」或插件级全局开关：前者只是「只留这些」的压缩写法，
+ * 与逐条 drop 重复；后者归 DSH 插件页。
+ *
+ * 判定不依赖「宿主当前有哪些服务器」：归属只从工具名 `mcp__<server>__<leaf>` 解析，
+ * 用户显式写下的规则就是意图；服务器没连上时没有工具出现，规则自然惰性。
  *
  * @module dsh-tool-keeper/rules
  */
@@ -73,58 +81,42 @@ export function isProtected(name) {
 export function normalizeConfig(raw) {
   const problems = [];
   const empty = {
-    enabled: true,
     disabledServers: new Set(),
-    serverKeep: new Map(),   // server -> Set<leaf>
     toolOverrides: new Map(), // full name -> 'drop' | 'keep'
     rewrites: new Map(),     // full name -> { description?, properties: Map }
   };
 
   if (raw === null || raw === undefined) return { rules: empty, problems };
   if (typeof raw !== 'object' || Array.isArray(raw)) {
-    problems.push('config root must be an object, got ' + describe(raw));
+    problems.push('配置根必须是一个对象，实际是 ' + describe(raw));
     return { rules: empty, problems };
   }
 
-  // ---- enabled: 总开关（DESIGN「七、可靠性与已知风险」）。放这里而不是插件 Config：
-  //      插件 Config 要改 cordis.patch.yml + 重启，不算「一键」。
+  // ---- enabled: 已移除。插件级启停归 DSH 插件页，本插件不再维护全局开关 ----
   if (raw.enabled !== undefined) {
-    if (typeof raw.enabled !== 'boolean') {
-      problems.push('enabled must be a boolean, got ' + describe(raw.enabled));
-    } else {
-      empty.enabled = raw.enabled;
-    }
+    problems.push('enabled 已移除：插件级启停请用 DSH 插件页；请删掉这个字段');
   }
 
-  // ---- servers: { name: { enabled?: bool, keep?: string[] } } ----
+  // ---- servers: { name: { enabled?: bool } } ----
   if (raw.servers !== undefined) {
     if (raw.servers === null || typeof raw.servers !== 'object' || Array.isArray(raw.servers)) {
-      problems.push('servers must be an object, got ' + describe(raw.servers));
+      problems.push('servers 必须是对象，实际是 ' + describe(raw.servers));
     } else {
       for (const [server, value] of Object.entries(raw.servers)) {
         if (isDangerousKey(server)) {
-          problems.push(`servers.${server} is not a valid server name; ignored`);
+          problems.push(`servers.${server} 不是合法的服务器名，已忽略`);
           continue;
         }
         if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-          problems.push(`servers.${server} must be an object, got ` + describe(value));
+          problems.push(`servers.${server} 必须是对象，实际是 ` + describe(value));
           continue;
         }
         if (value.enabled === false) empty.disabledServers.add(server);
         if (value.keep !== undefined) {
-          if (!Array.isArray(value.keep)) {
-            problems.push(`servers.${server}.keep must be an array, got ` + describe(value.keep));
-          } else {
-            const keep = new Set();
-            for (const leaf of value.keep) {
-              if (typeof leaf !== 'string' || leaf === '') {
-                problems.push(`servers.${server}.keep contains a non-string entry`);
-                continue;
-              }
-              keep.add(leaf);
-            }
-            empty.serverKeep.set(server, keep);
-          }
+          // 白名单已移除：必须报出来，不能静默忽略——静默忽略等于把工具全放出来
+          problems.push(
+            `servers.${server}.keep 已移除：请改写成 tools.<完整名> = "drop"`,
+          );
         }
       }
     }
@@ -133,19 +125,19 @@ export function normalizeConfig(raw) {
   // ---- tools: { fullName: 'drop' | 'keep' } ----
   if (raw.tools !== undefined) {
     if (raw.tools === null || typeof raw.tools !== 'object' || Array.isArray(raw.tools)) {
-      problems.push('tools must be an object, got ' + describe(raw.tools));
+      problems.push('tools 必须是对象，实际是 ' + describe(raw.tools));
     } else {
       for (const [name, action] of Object.entries(raw.tools)) {
         if (isDangerousKey(name)) {
-          problems.push(`tools.${name} is not a valid tool name; ignored`);
+          problems.push(`tools.${name} 不是合法的工具名，已忽略`);
           continue;
         }
         if (action !== 'drop' && action !== 'keep') {
-          problems.push(`tools.${name} must be "drop" or "keep", got ` + describe(action));
+          problems.push(`tools.${name} 只能是 'drop' 或 'keep'，实际是 ` + describe(action));
           continue;
         }
         if (isProtected(name)) {
-          problems.push(`tools.${name} is protected and cannot be overridden; ignored`);
+          problems.push(`tools.${name} 是受保护工具，不能覆盖，已忽略`);
           continue;
         }
         empty.toolOverrides.set(name, action);
@@ -157,11 +149,11 @@ export function normalizeConfig(raw) {
   // 值可以是字符串（改工具说明），也可以是对象（改参数说明）
   if (raw.rewrite !== undefined) {
     if (raw.rewrite === null || typeof raw.rewrite !== 'object' || Array.isArray(raw.rewrite)) {
-      problems.push('rewrite must be an object, got ' + describe(raw.rewrite));
+      problems.push('rewrite 必须是对象，实际是 ' + describe(raw.rewrite));
     } else {
       for (const [name, value] of Object.entries(raw.rewrite)) {
         if (isDangerousKey(name)) {
-          problems.push(`rewrite.${name} is not a valid tool name; ignored`);
+          problems.push(`rewrite.${name} 不是合法的工具名，已忽略`);
           continue;
         }
         if (typeof value === 'string') {
@@ -171,24 +163,24 @@ export function normalizeConfig(raw) {
         }
         // 对象形态 { description?: string, properties?: { 参数名: string } }
         if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-          problems.push(`rewrite.${name} must be a string or an object, got ` + describe(value));
+          problems.push(`rewrite.${name} 必须是字符串或对象，实际是 ` + describe(value));
           continue;
         }
         const entry = { properties: new Map() };
         if (value.description !== undefined) {
           if (typeof value.description !== 'string') {
-            problems.push(`rewrite.${name}.description must be a string`);
+            problems.push(`rewrite.${name}.description 必须是字符串`);
           } else {
             entry.description = value.description;
           }
         }
         if (value.properties !== undefined) {
           if (value.properties === null || typeof value.properties !== 'object' || Array.isArray(value.properties)) {
-            problems.push(`rewrite.${name}.properties must be an object`);
+            problems.push(`rewrite.${name}.properties 必须是对象`);
           } else {
             for (const [param, text] of Object.entries(value.properties)) {
               if (typeof text !== 'string') {
-                problems.push(`rewrite.${name}.properties.${param} must be a string`);
+                problems.push(`rewrite.${name}.properties.${param} 必须是字符串`);
                 continue;
               }
               entry.properties.set(param, text);
@@ -196,7 +188,7 @@ export function normalizeConfig(raw) {
           }
         }
         if (entry.description === undefined && entry.properties.size === 0) {
-          problems.push(`rewrite.${name} has neither description nor properties; ignored`);
+          problems.push(`rewrite.${name} 既没有 description 也没有 properties，已忽略`);
           continue;
         }
         empty.rewrites.set(name, entry);
@@ -237,13 +229,13 @@ function isDangerousKey(key) {
  * 判定一个工具该怎么处理。
  *
  * 优先级：保护名单 > 服务器总开关 > 单工具规则 > 服务器白名单。
+ * 判定只看配置与工具名，不依赖宿主当前有哪些服务器（见文件头）。
  *
  * @param name - 工具的注册名
  * @param rules - normalizeConfig 返回的 rules
- * @param knownServers - 当前确认存在的 MCP 服务器名集合（用于诊断，可省略）
- * @returns {{ action: 'keep'|'drop'|'rewrite', description?: string, reason: string }}
+ * @returns {{ action: 'keep'|'drop'|'rewrite', rewrite?: object, reason: string }}
  */
-export function decide(name, rules, knownServers) {
+export function decide(name, rules) {
   if (typeof name !== 'string' || name === '') {
     return { action: 'keep', reason: 'unnamed' };
   }
@@ -253,39 +245,28 @@ export function decide(name, rules, knownServers) {
     return { action: 'keep', reason: 'protected' };
   }
 
-  // 1. 服务器总开关 / 2. 服务器白名单（仅对 MCP 工具）。
-  //    总开关必须压过下面的单工具规则：关 = 整台服务器一个不剩。
-  //    「未知服务器」守卫只作用于服务器级规则本身，不得遮蔽下面的单工具规则：
-  //    显式点名 drop 的工具，即便服务器不在已知集合里也照丢（旧行为，回归测试锚定）。
   const parts = splitMcpName(name);
-  if (parts !== undefined) {
-    const known = knownServers === undefined || knownServers.has(parts.server);
-    if (known) {
-      if (rules.disabledServers.has(parts.server)) {
-        return { action: 'drop', reason: `server ${parts.server} disabled` };
-      }
-      const keep = rules.serverKeep.get(parts.server);
-      if (keep !== undefined && !keep.has(parts.leaf)) {
-        return { action: 'drop', reason: `not in ${parts.server} keep list` };
-      }
-    }
-  }
-
-  // 3. 单工具规则（对 MCP 工具它现在位于总开关之下）
   const override = rules.toolOverrides.get(name);
-  if (override === 'keep') {
-    return { action: 'keep', reason: 'tool override: keep' };
-  }
-  if (override === 'drop') {
+
+  if (parts !== undefined) {
+    // 1. 服务器总开关：物理闸，关 = 整台一个不剩
+    if (rules.disabledServers.has(parts.server)) {
+      return { action: 'drop', reason: `server ${parts.server} disabled` };
+    }
+    // 2. 单工具规则（唯一的选择层；没明确关的默认 keep）
+    if (override === 'drop') {
+      return { action: 'drop', reason: 'tool override: drop' };
+    }
+  } else if (override === 'drop') {
     return { action: 'drop', reason: 'tool override: drop' };
   }
 
-  // 到这里仍是 keep —— 但可能有改写
+  // 3. 保留（单工具 keep / 无规则）—— 改写与保留正交，照套
   const entry = rules.rewrites.get(name);
   if (entry !== undefined) {
     return { action: 'rewrite', rewrite: entry, reason: 'rewrite configured' };
   }
-  return { action: 'keep', reason: 'no rule' };
+  return { action: 'keep', reason: override === 'keep' ? 'tool override: keep' : 'no rule' };
 }
 
 /**
@@ -332,12 +313,11 @@ export function rewriteParameterDescriptions(parameters, overrides) {
  *
  * @param definition - 原始工具定义（有 name / description / parameters）
  * @param rules - 归一化后的规则
- * @param knownServers - 当前已知的 MCP 服务器名集合
  * @returns {{ drop: boolean, definition: object, reason: string, missingParams?: string[] }}
  */
-export function applyToDefinition(definition, rules, knownServers) {
+export function applyToDefinition(definition, rules) {
   const name = definition === null || definition === undefined ? undefined : definition.name;
-  const verdict = decide(name, rules, knownServers);
+  const verdict = decide(name, rules);
   if (verdict.action === 'drop') {
     return { drop: true, definition, reason: verdict.reason };
   }
@@ -370,11 +350,9 @@ export function applyToDefinition(definition, rules, knownServers) {
 
 /**
  * 工具目录：注册时留存每个工具的原始文本与体量。
- *
- * 没有它就做不到三件事（审计指出）：
+ * 没有它就做不到两件事：
  * - 「一键还原」—— 没有原文，只能删配置 + 重启
  * - 界面展开编辑—— 要显示「现在是什么」和「原来是怎样」
- * - 「改了省了多少」—— 没有原文算不出（原用途；token 显示已于 0.3.6 移除，还原与编辑仍在用）
  *
  * @module dsh-tool-keeper/catalog
  */
@@ -451,52 +429,106 @@ function safeLength(value) {
  * 诊断：找出配置里那些「写了但从没匹配到任何工具」的条目。
  * 静默失效的过滤器比没有过滤器更坏（见 docs/KNOWN-ISSUES.md 前两条）。
  *
+ * 只用「配置事实 + 本次实际见过的工具名」判断，不猜测宿主当前有哪些服务器：
+ * 判断不了的情况（改名 vs 未连接）合并成一条警告，并说清用户能做什么。
+ *
  * @param rules - 归一化后的规则
  * @param seenNames - 本次运行中实际见过的工具名
- * @param knownServers - 从 profiles 配置读到的 MCP 服务器名
  * @returns {{ kind: string, target: string, message: string }[]}
  */
-export function diagnose(rules, seenNames, knownServers) {
+export function diagnose(rules, seenNames) {
   const out = [];
   const seen = new Set(seenNames || []);
-  const servers = new Set(knownServers || []);
 
-  // 三态判定（TESTING「A8 的三态」）
-  const configuredServers = new Set([
-    ...rules.disabledServers,
-    ...rules.serverKeep.keys(),
-  ]);
-  for (const server of configuredServers) {
-    if (!servers.has(server)) {
-      out.push({ kind: 'error', target: 'servers.' + server, message: 'server not found in mcp-manager.servers' });
-      continue;
+  const seenServers = new Set();
+  for (const n of seen) {
+    const p = splitMcpName(n);
+    if (p !== undefined) seenServers.add(p.server);
+  }
+  const serverOf = name => {
+    const p = splitMcpName(name);
+    return p === undefined ? 'core' : p.server;
+  };
+
+  // 1) 停用的服务器：当前有没有它的工具出现
+  for (const server of rules.disabledServers) {
+    if (!seenServers.has(server)) {
+      out.push({
+        kind: 'warning',
+        target: 'servers.' + server,
+        message: `服务器 ${server} 暂时没有工具出现，停用规则暂不生效（未连接或已移除，规则会保留）`,
+      });
     }
-    const anySeen = [...seen].some(n => {
-      const p = splitMcpName(n);
-      return p !== undefined && p.server === server;
-    });
-    if (!anySeen) {
-      out.push({ kind: 'warning', target: 'servers.' + server, message: 'server configured but currently has no tools (not connected?)' });
-      continue;
+  }
+
+  // 2) 单工具规则：按服务器聚合。一台可能有几百条 drop，
+  //    逐个报会刷屏；同名服务器下匹配不到的统一报一条。
+  const overridesByServer = new Map();
+  for (const name of rules.toolOverrides.keys()) {
+    const s = serverOf(name);
+    if (!overridesByServer.has(s)) overridesByServer.set(s, []);
+    overridesByServer.get(s).push(name);
+  }
+  for (const [server, names] of overridesByServer) {
+    const missing = names.filter(n => !seen.has(n));
+    if (missing.length === 0) continue;
+    if (server !== 'core' && !seenServers.has(server)) {
+      out.push({
+        kind: 'warning',
+        target: `servers.${server}`,
+        message: `服务器 ${server} 的 ${names.length} 条工具规则暂不生效（服务器未连接或已移除），规则会保留`,
+      });
+    } else {
+      const shown = missing.slice(0, 8).join('、') + (missing.length > 8 ? ` 等 ${missing.length} 个` : '');
+      out.push({
+        kind: 'warning',
+        target: 'tools',
+        message: `有 ${missing.length} 个工具名对不上（可能改名了）：${shown}`,
+      });
     }
-    const keep = rules.serverKeep.get(server);
-    if (keep !== undefined) {
-      for (const leaf of keep) {
-        if (!seen.has(MCP_PREFIX + server + '__' + leaf)) {
-          out.push({ kind: 'warning', target: `servers.${server}.keep.${leaf}`, message: 'tool not found (renamed?)' });
-        }
+  }
+
+  // 3) 改写：同样按服务器聚合"不存在"的情况；存在的工具再查两件会静默失效的事
+  const rewritesByServer = new Map();
+  for (const name of rules.rewrites.keys()) {
+    const s = serverOf(name);
+    if (!rewritesByServer.has(s)) rewritesByServer.set(s, []);
+    rewritesByServer.get(s).push(name);
+  }
+  for (const [server, names] of rewritesByServer) {
+    const missing = names.filter(n => !seen.has(n));
+    if (missing.length > 0) {
+      if (server !== 'core' && !seenServers.has(server)) {
+        out.push({
+          kind: 'warning',
+          target: `servers.${server}`,
+          message: `服务器 ${server} 的 ${names.length} 条改写暂不生效（服务器未连接或已移除），规则会保留`,
+        });
+      } else {
+        out.push({
+          kind: 'warning',
+          target: 'rewrite',
+          message: `有 ${missing.length} 条改写指向不存在的工具（可能改名了）：${missing.slice(0, 8).join('、')}`,
+        });
       }
     }
-  }
-
-  for (const name of rules.toolOverrides.keys()) {
-    if (!seen.has(name)) {
-      out.push({ kind: 'warning', target: 'tools.' + name, message: 'tool not found (renamed or server offline?)' });
-    }
-  }
-  for (const name of rules.rewrites.keys()) {
-    if (!seen.has(name)) {
-      out.push({ kind: 'warning', target: 'rewrite.' + name, message: 'tool not found (renamed or server offline?)' });
+    // 工具存在但永远不会执行到改写：说出来，别让它静默失效
+    for (const name of names) {
+      if (!seen.has(name)) continue;
+      const verdict = decide(name, rules);
+      if (verdict.action === 'drop') {
+        out.push({
+          kind: 'warning',
+          target: 'rewrite.' + name,
+          message: `工具 ${name} 已被规则隐藏，这条改写不会生效（要它生效先把工具放出来）`,
+        });
+      } else if (verdict.reason === 'protected') {
+        out.push({
+          kind: 'warning',
+          target: 'rewrite.' + name,
+          message: `${name} 是受保护的基础工具，改写不会生效`,
+        });
+      }
     }
   }
 

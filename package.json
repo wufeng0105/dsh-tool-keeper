@@ -1,6 +1,6 @@
 {
   "name": "@wufeng0105/dsh-tool-keeper",
-  "version": "0.3.20",
+  "version": "0.4.1",
   "type": "module",
   "description": "AI re-reads every tool's manual on every reply. Hide the ones you never use, and rewrite the rest.",
   "license": "MIT",
@@ -32,6 +32,7 @@
     "tool.js",
     "baseline.js",
     "api.js",
+    "config.js",
     "hash.js",
     "ui",
     "cordis.patch.yml",

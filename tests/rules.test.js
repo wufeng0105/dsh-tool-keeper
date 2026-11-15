@@ -68,34 +68,52 @@ test('normalizeConfig: 空/undefined/null 都返回空规则且不抛', () => {
 test('normalizeConfig: 根不是对象时记问题而不抛', () => {
   const { problems } = normalizeConfig('not an object');
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /config root must be an object/);
+  assert.match(problems[0], /配置根必须是一个对象/);
 });
 
 test('normalizeConfig: servers 形态错误被记录', () => {
   const { problems } = normalizeConfig({ servers: [] });
   assert.equal(problems.length, 1);
-  assert.match(problems[0], /servers must be an object/);
+  assert.match(problems[0], /servers 必须是对象/);
 });
 
-test('normalizeConfig: keep 不是数组被记录', () => {
-  const { problems } = normalizeConfig({ servers: { tinyfish: { keep: 'search' } } });
-  assert.ok(problems.some(p => /keep must be an array/.test(p)));
+test('normalizeConfig: servers.*.keep 已移除会被记录（不静默忽略）', () => {
+  const { problems } = normalizeConfig({ servers: { tinyfish: { keep: ['search'] } } });
+  assert.ok(problems.some(p => p.includes('已移除')), '必须报出来，不能静默忽略');
+});
+
+test('normalizeConfig: enabled 已移除会被记录', () => {
+  const { problems } = normalizeConfig({ enabled: true });
+  assert.ok(problems.some(p => p.includes('enabled 已移除')), '必须提示改用 DSH 插件页');
+});
+
+test('迁移等价：旧 keep 名单与等价的 drop 集合判定一致', () => {
+  // 旧语义：keep 名单外的都 drop；迁移成「名单外写成 drop」后必须完全等价
+  const keep = ['a', 'b'];
+  const names = ['mcp__s__a', 'mcp__s__b', 'mcp__s__c', 'read'];
+  const rules = rulesOf({ tools: { 'mcp__s__c': 'drop' } });
+  for (const n of names) {
+    const leaf = n.startsWith('mcp__s__') ? n.split('__')[2] : undefined;
+    const oldVisible = leaf === undefined || keep.includes(leaf);
+    const newVisible = decide(n, rules).action !== 'drop';
+    assert.equal(newVisible, oldVisible, n);
+  }
 });
 
 test('normalizeConfig: tools 值非法被记录', () => {
   const { problems } = normalizeConfig({ tools: { foo: 'nuke' } });
-  assert.ok(problems.some(p => /must be "drop" or "keep"/.test(p)));
+  assert.ok(problems.some(p => /只能是/.test(p)));
 });
 
 test('normalizeConfig: 试图覆盖保护工具被拒绝', () => {
   const { rules, problems } = normalizeConfig({ tools: { read: 'drop' } });
   assert.equal(rules.toolOverrides.has('read'), false, '保护工具不得进入覆盖表');
-  assert.ok(problems.some(p => /protected/.test(p)));
+  assert.ok(problems.some(p => /受保护工具/.test(p)));
 });
 
 test('normalizeConfig: rewrite 非字符串被记录', () => {
   const { problems } = normalizeConfig({ rewrite: { 'mcp__a__b': 42 } });
-  assert.ok(problems.some(p => /must be a string/.test(p)));
+  assert.ok(problems.some(p => /必须是字符串/.test(p)));
 });
 
 // ─────────────────────────────────────────────
@@ -111,13 +129,7 @@ test('decide: 保护工具即便配了 drop 也放行', () => {
 
 test('decide: 服务器总开关生效', () => {
   const rules = rulesOf({ servers: { tinyfish: { enabled: false } } });
-  assert.equal(decide('mcp__tinyfish__search', rules, new Set(['tinyfish'])).action, 'drop');
-});
-
-test('decide: 服务器白名单生效', () => {
-  const rules = rulesOf({ servers: { tinyfish: { keep: ['search'] } } });
-  assert.equal(decide('mcp__tinyfish__search', rules, new Set(['tinyfish'])).action, 'keep');
-  assert.equal(decide('mcp__tinyfish__create_dataset', rules, new Set(['tinyfish'])).action, 'drop');
+  assert.equal(decide('mcp__tinyfish__search', rules).action, 'drop');
 });
 
 test('decide: 服务器总开关压过单工具 keep（关 = 一个不剩）', () => {
@@ -125,65 +137,46 @@ test('decide: 服务器总开关压过单工具 keep（关 = 一个不剩）', (
     servers: { tinyfish: { enabled: false } },
     tools: { 'mcp__tinyfish__search': 'keep' },
   });
-  const v = decide('mcp__tinyfish__search', rules, new Set(['tinyfish']));
+  const v = decide('mcp__tinyfish__search', rules);
   assert.equal(v.action, 'drop', '总开关关闭时 keep 条目不得漏网（0.3.20 语义）');
 });
 
-test('decide: 服务器总开关压过白名单', () => {
+test('decide: 未在配置里声明的服务器，无规则照常放行', () => {
+  // 判定不再依赖宿主声明：没写规则就是没规则，与服务器是否存在无关
+  const rules = rulesOf({});
+  const v = decide('mcp__ghost__whatever', rules);
+  assert.equal(v.action, 'keep', '没配规则的服务器，工具照常放行');
+  assert.equal(v.reason, 'no rule');
+});
+
+test('decide: 配置了规则的服务器一律执行，不依赖宿主是否声明它', () => {
+  // 服务器没连上时没有工具出现，规则自然惰性；一旦出现就按配置执行
   const rules = rulesOf({
-    servers: { tinyfish: { enabled: false, keep: ['search'] } },
+    servers: { s2: { enabled: false } },
+    tools: { 'mcp__s2__t': 'keep' },
   });
-  const v = decide('mcp__tinyfish__search', rules, new Set(['tinyfish']));
-  assert.equal(v.action, 'drop', '总开关关闭时白名单也不得漏网');
+  assert.equal(decide('mcp__s2__t', rules).action, 'drop',
+    '总开关是物理闸，压过单工具 keep');
 });
 
-test('decide: 单工具 drop 胜过白名单', () => {
+test('decide: 单工具 keep 不丢改写（keep 与 rewrite 正交）', () => {
   const rules = rulesOf({
-    servers: { tinyfish: { keep: ['search', 'fetch_content'] } },
-    tools: { 'mcp__tinyfish__search': 'drop' },
-  });
-  assert.equal(decide('mcp__tinyfish__search', rules, new Set(['tinyfish'])).action, 'drop');
-  assert.equal(decide('mcp__tinyfish__fetch_content', rules, new Set(['tinyfish'])).action, 'keep');
-});
-
-test('decide: 未知服务器一律不隐藏', () => {
-  const rules = rulesOf({ servers: { tinyfish: { enabled: false } } });
-  // tinyfish 不在 knownServers 里
-  const v = decide('mcp__tinyfish__search', rules, new Set(['other']));
-  assert.equal(v.action, 'keep', '未知服务器不该被隐藏');
-});
-
-test('decide: 未知服务器不遮蔽显式单工具 drop', () => {
-  // 服务器级守卫只作用于服务器级规则：配置可能来自另一台机器，
-  // 此时宁可放过服务器级推断，不放过显式意图（0.3.20 重排时的回归教训）
-  const rules = rulesOf({
-    servers: { tinyfish: { enabled: false } },
-    tools: { 'mcp__tinyfish__search': 'drop' },
-  });
-  const v = decide('mcp__tinyfish__search', rules, new Set(['other']));
-  assert.equal(v.action, 'drop', '显式点名 drop 的工具，即便服务器未知也照丢');
-  assert.equal(v.reason, 'tool override: drop');
-});
-
-test('decide: 单工具 keep 不得跨过服务器白名单闸门', () => {
-  // 白名单 drop 在单工具判定之前返回：显式 keep 捞不回不在白名单里的工具
-  const rules = rulesOf({
-    servers: { tinyfish: { keep: ['search'] } },
     tools: { 'mcp__tinyfish__fetch_content': 'keep' },
+    rewrite: { 'mcp__tinyfish__fetch_content': '读网页正文。' },
   });
-  const v = decide('mcp__tinyfish__fetch_content', rules, new Set(['tinyfish']));
-  assert.equal(v.action, 'drop', '白名单闸门压过单工具 keep');
-  assert.equal(v.reason, 'not in tinyfish keep list');
+  const v = decide('mcp__tinyfish__fetch_content', rules);
+  assert.equal(v.action, 'rewrite', '打开开关不应让说明改写失效');
+  assert.equal(v.rewrite.description, '读网页正文。');
 });
 
 test('decide: 原生工具不受服务器规则影响', () => {
   const rules = rulesOf({ servers: { tinyfish: { enabled: false } } });
-  assert.equal(decide('schedule_list', rules, new Set(['tinyfish'])).action, 'keep');
+  assert.equal(decide('schedule_list', rules).action, 'keep');
 });
 
 test('decide: rewrite 命中时返回改写条目', () => {
   const rules = rulesOf({ rewrite: { 'mcp__tinyfish__fetch_content': '读网页正文。' } });
-  const v = decide('mcp__tinyfish__fetch_content', rules, new Set(['tinyfish']));
+  const v = decide('mcp__tinyfish__fetch_content', rules);
   assert.equal(v.action, 'rewrite');
   assert.equal(v.rewrite.description, '读网页正文。');
 });
@@ -193,7 +186,7 @@ test('decide: 被 drop 的工具不产生 rewrite', () => {
     servers: { tinyfish: { enabled: false } },
     rewrite: { 'mcp__tinyfish__search': '不该出现' },
   });
-  const v = decide('mcp__tinyfish__search', rules, new Set(['tinyfish']));
+  const v = decide('mcp__tinyfish__search', rules);
   assert.equal(v.action, 'drop', 'drop 优先于 rewrite');
 });
 
@@ -203,7 +196,7 @@ test('decide: 被 drop 的工具不产生 rewrite', () => {
 test('applyToDefinition: drop 时原样返回 definition 并标记', () => {
   const def = { name: 'mcp__tinyfish__search', description: 'orig', parameters: { a: 1 } };
   const rules = rulesOf({ servers: { tinyfish: { enabled: false } } });
-  const r = applyToDefinition(def, rules, new Set(['tinyfish']));
+  const r = applyToDefinition(def, rules);
   assert.equal(r.drop, true);
   assert.equal(r.definition, def, 'drop 时不应构造新对象');
 });
@@ -213,7 +206,7 @@ test('applyToDefinition: rewrite 只换 description，其余字段保持引用',
   const output = { schema: {}, render: () => [] };
   const def = { name: 'mcp__tinyfish__fetch_content', description: 'orig', parameters: params, output };
   const rules = rulesOf({ rewrite: { 'mcp__tinyfish__fetch_content': '新说明' } });
-  const r = applyToDefinition(def, rules, new Set(['tinyfish']));
+  const r = applyToDefinition(def, rules);
   assert.equal(r.drop, false);
   assert.equal(r.definition.description, '新说明');
   assert.equal(r.definition.parameters, params, 'parameters 必须是同一引用');
@@ -276,7 +269,7 @@ test('applyToDefinition: 对象形态的 rewrite 同时改工具说明与参数�
       },
     },
   });
-  const r = applyToDefinition(def, rules, new Set(['tinyfish']));
+  const r = applyToDefinition(def, rules);
   assert.equal(r.definition.description, '读网页正文。');
   assert.equal(r.definition.parameters.properties.ttl.description, '缓存秒数');
   assert.equal(r.definition.parameters.properties.urls.description, 'Array of URLs to fetch');
@@ -286,14 +279,14 @@ test('applyToDefinition: 对象形态的 rewrite 同时改工具说明与参数�
 test('applyToDefinition: 对象形态只给 properties 时不改工具说明', () => {
   const def = { name: 'mcp__tinyfish__fetch_content', description: 'orig', parameters: paramFixture() };
   const rules = rulesOf({ rewrite: { 'mcp__tinyfish__fetch_content': { properties: { ttl: '缓存秒数' } } } });
-  const r = applyToDefinition(def, rules, new Set(['tinyfish']));
+  const r = applyToDefinition(def, rules);
   assert.equal(r.definition.description, 'orig', '未指定 description 时不得改动');
 });
 
 test('applyToDefinition: 参数不存在时进入 missingParams', () => {
   const def = { name: 'mcp__tinyfish__fetch_content', description: 'orig', parameters: paramFixture() };
   const rules = rulesOf({ rewrite: { 'mcp__tinyfish__fetch_content': { properties: { ghost: 'x' } } } });
-  const r = applyToDefinition(def, rules, new Set(['tinyfish']));
+  const r = applyToDefinition(def, rules);
   assert.deepEqual(r.missingParams, ['ghost']);
 });
 
@@ -315,7 +308,7 @@ test('normalizeConfig: 字符串与对象两种 rewrite 形态共存', () => {
 test('normalizeConfig: 空的 rewrite 对象被拒绝并记问题', () => {
   const { rules, problems } = normalizeConfig({ rewrite: { 'mcp__a__b': {} } });
   assert.equal(rules.rewrites.has('mcp__a__b'), false);
-  assert.ok(problems.some(p => /neither description nor properties/.test(p)));
+  assert.ok(problems.some(p => /既没有 description 也没有 properties/.test(p)));
 });
 
 // ─────────────────────────────────────────────
@@ -360,48 +353,60 @@ test('ToolCatalog: 标记保护工具', () => {
 test('applyToDefinition: 无规则时返回原对象', () => {
   const def = { name: 'mcp__tinyfish__search', description: 'orig' };
   const rules = rulesOf({});
-  const r = applyToDefinition(def, rules, new Set(['tinyfish']));
+  const r = applyToDefinition(def, rules);
   assert.equal(r.drop, false);
   assert.equal(r.definition, def);
 });
 
 // ─────────────────────────────────────────────
-// diagnose —— 三态
+// diagnose —— 只看「配置事实 + 实际见到的工具」
 // ─────────────────────────────────────────────
-test('diagnose: 服务器不在 mcp-manager.servers 里 → error', () => {
+test('diagnose: 配置了服务器但当前无它的工具 → warning（不再有 error 态）', () => {
   const rules = rulesOf({ servers: { ghost: { enabled: false } } });
-  const out = diagnose(rules, [], new Set(['tinyfish']));
+  const out = diagnose(rules, []);
   const hit = out.find(d => d.target === 'servers.ghost');
   assert.ok(hit, '必须报出 ghost');
-  assert.equal(hit.kind, 'error');
+  assert.equal(hit.kind, 'warning', '判断不了「改名」还是「没连上」，一律降为警告');
+  assert.ok(hit.message.includes('暂不生效'), '要说清规则只是暂不生效');
 });
 
 test('diagnose: 服务器存在但无工具 → warning', () => {
   const rules = rulesOf({ servers: { tinyfish: { enabled: false } } });
-  const out = diagnose(rules, [], new Set(['tinyfish']));
+  const out = diagnose(rules, []);
   const hit = out.find(d => d.target === 'servers.tinyfish');
-  assert.ok(hit);
-  assert.equal(hit.kind, 'warning');
-});
-
-test('diagnose: keep 里的工具名匹配不上 → warning', () => {
-  const rules = rulesOf({ servers: { tinyfish: { keep: ['nosuchtool'] } } });
-  const out = diagnose(rules, ['mcp__tinyfish__search'], new Set(['tinyfish']));
-  const hit = out.find(d => d.target === 'servers.tinyfish.keep.nosuchtool');
   assert.ok(hit);
   assert.equal(hit.kind, 'warning');
 });
 
 test('diagnose: 完全正常的配置不产生任何诊断', () => {
   const rules = rulesOf({ servers: { tinyfish: { keep: ['search'] } } });
-  const out = diagnose(rules, ['mcp__tinyfish__search'], new Set(['tinyfish']));
+  const out = diagnose(rules, ['mcp__tinyfish__search']);
   assert.deepEqual(out, []);
 });
 
-test('diagnose: rewrite 指向不存在的工具 → warning', () => {
+test('diagnose: 改写指向不存在的服务器 → 按服务器聚合成一条', () => {
   const rules = rulesOf({ rewrite: { 'mcp__gone__tool': 'x' } });
-  const out = diagnose(rules, ['mcp__tinyfish__search'], new Set(['tinyfish']));
-  assert.ok(out.some(d => d.target === 'rewrite.mcp__gone__tool'));
+  const out = diagnose(rules, ['mcp__tinyfish__search']);
+  assert.ok(out.some(d => d.target === 'servers.gone'), '按服务器聚合成一条');
+});
+
+test('diagnose: rewrite 落在被隐藏的工具上 → warning（不静默失效）', () => {
+  const rules = rulesOf({
+    servers: { tinyfish: { enabled: false } },
+    rewrite: { 'mcp__tinyfish__search': 'x' },
+  });
+  const out = diagnose(rules, ['mcp__tinyfish__search']);
+  const hit = out.find(d => d.target === 'rewrite.mcp__tinyfish__search');
+  assert.ok(hit, '必须报出这条改写不会生效');
+  assert.ok(hit.message.includes('隐藏'), '要说清原因');
+});
+
+test('diagnose: rewrite 落在受保护工具上 → warning', () => {
+  const rules = rulesOf({ rewrite: { read: 'x' } });
+  const out = diagnose(rules, ['read']);
+  const hit = out.find(d => d.target === 'rewrite.read');
+  assert.ok(hit, '必须报出受保护工具的改写不会生效');
+  assert.ok(hit.message.includes('受保护'));
 });
 // ─────────────────────────────────────────────
 // 原型链危险键：必须拒绝，不能「报成功但什么也没写」

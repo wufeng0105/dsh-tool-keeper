@@ -1,11 +1,8 @@
 # DSH 接口事实
 
-这个文件记录**「DSH 到底长什么样」**，每一条都带出处。
-改代码之前核对这里，不要凭印象，也不要凭上游文档——文档可能落后于实际运行版本。
+这个文件记录「DSH 到底长什么样」，每条带出处。改代码前核对这里，不要凭印象，也不只信上游文档——文档可能落后于实际运行版本。
 
-查证版本：`0.2.2-rc.3`（2026-11-14 复检）。历史查证：`0.2.2-rc.2`。
-授权的查询方式是 `cordis_inspect_query`（权威源），文档副本在 plugin-kit 包的 `host-skills/dsh-doc/`。
-逐条触点的清单与复检方法见 `touchpoints.json`，rc.3 的签名快照见 `host-snapshot.json`。
+查证版本：`0.2.2-rc.3`。授权的查询方式是 `cordis_inspect_query`（权威源），文档副本在 plugin-kit 包的 `host-skills/dsh-doc/`。逐条触点与复检方法见 `touchpoints.json`，签名快照见 `host-snapshot.json`。
 
 ### 怎么查
 
@@ -19,9 +16,7 @@
 { platform: 'client', provider: 'Slots', method: 'listSubTree', input: { root: 'settings.section' } }
 ```
 
-> **教训**：判不了的时候，先怀疑自己的查法，别急着写「宿主不支持」。
-> 「精确查询失败」曾被误记成宿主限制，实际是查询用法写错了——一句错误的
-> 「宿主限制」会污染整条证据链，还会让后来人放弃机判改去手工点点点。
+判不了的时候先怀疑自己的查法，不要急着写「宿主不支持」；一句错误的「宿主限制」会污染整条证据链。
 
 ---
 
@@ -29,8 +24,8 @@
 
 | 事实 | 结论 | 出处 |
 |---|---|---|
-| MCP 工具和内置工具是不是同一个入口 | 是，都走 `ctx.tools.register(definition)` | `dsh-mcp-client/src/tools.ts:176-178` |
-| `description` 什么时候固定下来 | 构造 definition 时，不是每次读取时 | `dsh-mcp-client/src/tools.ts:257-260` |
+| MCP 工具和内置工具是否同一个入口 | 是，都走 `ctx.tools.register(definition)` | `dsh-mcp-client/src/tools.ts:176-178` |
+| `description` 什么时候固定 | 构造 definition 时，不是每次读取时 | `dsh-mcp-client/src/tools.ts:257-260` |
 | 模型看到的 schema 从哪来 | `projectToolSchema()` 从 definition 投影 | `dsh-tools/src/schema.ts:641-646` |
 
 **推论**：想在模型看到的文字上做手脚，只有注册期这一次机会。
@@ -46,7 +41,7 @@
 | 传入不认识的名字 | 抛错 | `dsh-tools/src/index.ts:179-183` |
 | 变更通知时机 | 同步发出 `tools/change` | `dsh-scope/src/store.ts:257-262` |
 
-**为什么本项目不用它**：见 [DESIGN.md](./DESIGN.md) 第一、六节。
+**为什么不用它**：见 [DESIGN.md](./DESIGN.md)。
 
 ---
 
@@ -59,30 +54,26 @@
 | 包怎么被发现 | 只认「包的精确包名」或「路径里最近的 package.json」 |
 | 所以要怎么做 | `ui/` 目录下必须有独立的 `package.json`，声明 `dsh.client.platform: "web"` 和 `exports["./client"]` |
 | CSS 怎么挂 | 自己创建 `<style>` 标签塞进 `document.head`，并在 effect 的清理函数里移除 |
-| 客户端取数 | `fetch('/<插件>/api', { method:'POST', body: JSON.stringify(...) })` |
+| 客户端取数 | `fetch('/tool-keeper/api', { method:'POST', body: JSON.stringify(...) })` |
 
 出处：本机 `dsh-enhance` 与 `dsh-archive-manager` 的实现，两者都是已上架插件。
 
 ### 主题 token
 
-所有颜色、圆角、字体必须用宿主的 CSS 变量，不能写死色值。可用的变量用
-`cordis_inspect_query` 的 `Theme.listTokens` 查。
+颜色、圆角、字体必须用宿主的 CSS 变量，不写死色值。可用变量用 `cordis_inspect_query` 的 `Theme.listTokens` 查。
 
-有两个容易搞错的：
+两个容易搞错的：
 
-- 字体族是 `--dsw-font-family`（界面）和 `--ds-font-family-code`（等宽）。
-  后者是 `--ds-` 开头不是 `--dsw-`，**看着像笔误但是真的**。
+- 字体族是 `--dsw-font-family`（界面）和 `--ds-font-family-code`（等宽）。后者是 `--ds-` 开头不是 `--dsw-`。
 - 行间分隔用 `.5px solid` 而不是 `1px`，这是宿主的视觉刻度。
 
 ---
 
 ## `settings.section`
 
-注册方式：
-
 ```js
 ctx.slots.inject('settings.section', function () {
-  return ctx.slots.register({ id: 'tool-keeper', order: 50, label: () => 'Tool Keeper' }, Component);
+  return ctx.slots.register({ id: 'tool-keeper', order: 50, label: () => '工具管理' }, Component);
 });
 ```
 
@@ -90,12 +81,12 @@ ctx.slots.inject('settings.section', function () {
 |---|---|
 | `id` | 自己的键。用已存在的 id 会**替换**那个条目，不是并列 |
 | `order` | 导航里的位置，升序 |
-| `label` | 可以是函数，每次投影都会重新读，所以能跟随语言切换 |
+| `label` | 可以是函数，每次投影都重新读，能跟随语言切换 |
 | 收到什么 props | `{ close }`，只能关掉设置面板 |
 
 ### 当前位置占用情况
 
-改 `order` 之前先看这张表，撞号会让导航顺序不稳定（相同 order 谁先谁后是未定义的）。
+改 `order` 之前先看这张表，撞号会让导航顺序不稳定（相同 order 谁先谁后未定义）。
 
 ```
 0    general          10   models         15   plugins
@@ -103,8 +94,6 @@ ctx.slots.inject('settings.section', function () {
 45   archive-manager  50   tool-keeper    60   dsh-draft-studio
 440  xdpool
 ```
-
-本插件取 `50`，与现有条目无一撞号。
 
 ---
 
@@ -124,10 +113,7 @@ ctx.inject(['webServer'], (inner) => {
 |---|---|
 | 为什么用 `ctx.inject` 而不是写进 `inject` 数组 | headless 下没有 `webServer`，写进 `inject` 会让插件永远 pending，宿主判定 web 启动失败 |
 | 没有 `webServer` 时怎么办 | 检查 `typeof web.register === 'function'`，没有就只记日志，不影响插件其余功能 |
-| 未知路径返回什么 | **405**（不是 404）。所以「405」不代表路由存在 |
-
-最后一条是宿主的默认响应：**未知路径返回 405 而不是 404**，所以「405」不代表路由存在，
-验证时要拿一个明确不存在的路径做对照。
+| 未知路径返回什么 | **405**（不是 404）。所以「405」不代表路由存在，验证时拿一个明确不存在的路径做对照 |
 
 ---
 
@@ -138,29 +124,21 @@ ctx.inject(['webServer'], (inner) => {
 | `package.json` 里怎么声明 | `dsh.bundle.patch` 指向 patch 文件 |
 | `index.js` 要导出什么 | `name`、`inject`、`apply` |
 | `Config` 能导出普通对象吗 | **不能**。会报 `Cannot read properties of undefined (reading 'validate')` |
-| 想用配置怎么办 | 用 schemastery 的 `Schema.object(...)`，或者干脆不导出 Config，自己读独立配置文件（本项目选了后者） |
+| 想用配置怎么办 | 用 schemastery 的 `Schema.object(...)`，或干脆不导出 Config，自己读独立配置文件（本项目选后者） |
 | 两个插件间的关系 | 所有插件共享同一个 Cordis 容器与作用域树 |
 
-### patch 里 `name` 有两种写法，规则不同
-
-这一点容易搞错，本项目两行都用到了：
+### patch 里 `name` 有两种写法
 
 | 用途 | patch 里的 `name` | 解析规则 |
 |---|---|---|
 | 宿主半（`index.js`） | 包名 `dsh-tool-keeper` | **必须与 `package.json` 的 `name` 逐字一致** |
 | 浏览器半（`ui/`） | 相对路径 `./ui/index.js` | 相对**本包目录**解析，指向一个**自己的 `package.json`** |
 
-浏览器半之所以要独立成一个包（`ui/package.json` 声明 `dsh.client.platform: "web"` + `exports["./client"]`），
-是因为宿主的浏览器半发现机制只认「包的精确包名」或「路径里最近的 `package.json`」——
-裸子路径会被当成非包直接跳过。
-
-所以「entry name 必须等于包名」只对宿主半那一行成立，**浏览器半那行写的是路径**。
+浏览器半要独立成包（声明 `dsh.client.platform: "web"` + `exports["./client"]`），因为宿主只认「包的精确包名」或「路径里最近的 `package.json`」，裸子路径会被当成非包跳过。
 
 ---
 
 ## 宿主的失败模式
-
-这些是查证过的，不是猜的：
 
 | 操作 | 结果 |
 |---|---|
@@ -168,6 +146,4 @@ ctx.inject(['webServer'], (inner) => {
 | 服务被 `Object.freeze` | `Reflect.set` 静默失败，赋值后比较能发现 |
 | 属性是只读 getter | `Reflect.set` 抛错 |
 | 不带 `Origin` 头访问本地接口 | 正常收到（非浏览器调用） |
-| 跨源访问 | 应由插件自己拒绝 |
-
-最后一条是本插件自己实现的行为，不是宿主的。见 `api.js` 的 `sameOrigin()`。
+| 跨源访问 | 由插件自己拒绝（`api.js` 的 `sameOrigin()`） |

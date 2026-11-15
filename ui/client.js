@@ -43,6 +43,7 @@ window.__ModuleLoader__.load({
 
       /* ── 工具栏：三者同高、垂直居中 ── */
       '.tw-toolbar{display:flex;align-items:center;gap:8px;width:100%;min-width:0}',
+
       '.tw-searchWrap{position:relative;flex:1 1 0;min-width:140px;display:flex;align-items:center}',
       '.tw-searchIcon{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;stroke:var(--dsw-alias-label-tertiary);fill:none;stroke-width:1.6;stroke-linecap:round;pointer-events:none}',
       '.tw-search{box-sizing:border-box;width:100%;height:34px;font:inherit;font-size:13px;line-height:20px;padding:0 10px 0 30px;border-radius:var(--dsw-radius-sm,8px);border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary)}',
@@ -56,11 +57,9 @@ window.__ModuleLoader__.load({
       /* ── 摘要 ── */
       '.tw-summary{margin:10px 0 0;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;font-variant-numeric:tabular-nums}',
       '.tw-divider{height:0;border-top:1px solid var(--dsw-alias-border-l2);margin:12px 0 14px}',
-
       /* ── 分组：一张卡片包住标题与整组工具，卡与卡贴合无缝 ──
-         第四轮反馈收敛出的形态：标题行收进卡片，折叠态也是一张完整的卡，
-         不再裸奔；组间不留缝，相邻卡的边框重合成一条线；
-         组内行间用发丝线，行级仍然没有独立盒子。首尾卡保留圆角。 */
+         标题行收进卡片（折叠态也是完整的卡）；组间不留缝，相邻卡边框重合成一条线；
+         组内行间用发丝线，行级没有独立盒子；首尾卡保留圆角。 */
       '.tw-group{margin:0;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l2);overflow:hidden}',
       '.tw-group+.tw-group{margin-top:-1px}',
       '.tw-groups>.tw-group:first-child{border-radius:var(--dsw-radius-sm,8px) var(--dsw-radius-sm,8px) 0 0}',
@@ -254,8 +253,7 @@ window.__ModuleLoader__.load({
       var role = props.role;
       var hidden = role.effective === 'drop';
       var isMcp = typeof role.server === 'string' && role.server !== '';
-      // 状态来自服务器级规则时必须说出来，否则用户不知道为什么这一行是关的
-      var fromServer = role.source === 'server';
+
       // 整台服务器停用时，行级开关是无效操作 —— 禁用比「点了没反应」诚实
       var serverDisabled = props.serverDisabled === true;
 
@@ -274,7 +272,6 @@ window.__ModuleLoader__.load({
           h('span', { className: 'tw-meta' },
             serverDisabled ? '服务器已停用' : null,
             props.rewritten ? '已改写' : null,
-            fromServer && !serverDisabled ? '服务器规则关闭' : null,
           ),
         ),
         role.protected
@@ -363,7 +360,7 @@ window.__ModuleLoader__.load({
                   : roles.length + ' 个' + (hiddenCount > 0 ? ' · ' + hiddenCount + ' 已隐藏' : '')),
             ),
           ),
-          // 服务器总开关只出现在 MCP 组。stopPropagation 防止点击冒泡触发折叠。
+          // 服务器总开关只出现在 MCP 组。全局停用时也禁用（写了也不生效）。
           isMcp
             ? h(Switch, {
               checked: !serverDisabled,
@@ -458,7 +455,7 @@ window.__ModuleLoader__.load({
       var disabledServers = data.rules.disabledServers || [];
 
       return h('div', { className: 'tw' },
-        /* 标题行：导航里已经叫「工具管理」，这里不再重复标题与说明 */
+        /* 插件级启停归 DSH 插件页；这里只显示拦截补丁是否装上 */
         data.patched === false
           ? h('p', { className: 'tw-note', 'data-tone': 'bad' },
             '拦截补丁未安装：' + (data.reason || '未知原因') + '。当前配置不会生效。')
@@ -472,6 +469,8 @@ window.__ModuleLoader__.load({
           : null,
         props.error !== null && props.error !== undefined
           ? h('p', { className: 'tw-note', 'data-tone': 'bad' }, props.error) : null,
+        props.notice !== null && props.notice !== undefined
+          ? h('p', { className: 'tw-note' }, props.notice) : null,
         // stale 由服务端比对「磁盘配置」与「启动时加载的配置」得出，是持久事实，
         // 不放在 React state 里——否则刷新一次提示就消失，用户看到的是「已生效」。
         data.stale
@@ -583,6 +582,7 @@ window.__ModuleLoader__.load({
       var s5 = React.useState(''); var draft = s5[0]; var setDraft = s5[1];
       var s6 = React.useState({}); var expandedGroups = s6[0]; var setExpandedGroups = s6[1];
       var s7 = React.useState(''); var query = s7[0]; var setQuery = s7[1];
+      var s8 = React.useState(null); var notice = s8[0]; var setNotice = s8[1];
       var importInputRef = React.useRef(null);
 
       var load = React.useCallback(function () {
@@ -680,19 +680,24 @@ window.__ModuleLoader__.load({
       /**
        * 导入是整份替换。先本地解析 JSON（fail fast，省一次往返），
        * 再交给服务端校验落盘 —— 服务端会先备份再校验，坏配置不会进来。
+       * 成功后显示备份文件名：用户要回退时知道去哪找。
        */
       function onImportFile(file) {
         if (!file) return;
-        setBusy(true); setError(null);
+        setBusy(true); setError(null); setNotice(null);
         file.text().then(function (text) {
           var parsed = JSON.parse(text); // 解析失败直接进 catch，报给用户
           return call({ op: 'import', config: parsed });
-        }).then(function () {
+        }).then(function (result) {
+          setNotice('导入成功' + (result && result.backup
+            ? '，旧配置已备份为 ' + String(result.backup).split(/[\\/]/).pop()
+            : '') + '。重启 DSH 后生效。');
           return call({ op: 'state' });
         }).then(function (next) { setData(next); })
           .catch(function (e) { setError('导入失败：' + e.message); })
           .then(function () { setBusy(false); });
       }
+
 
       function onReset() {
         setBusy(true); setError(null);
@@ -751,6 +756,7 @@ window.__ModuleLoader__.load({
         onExport: onExport,
         onImport: onImport,
         onImportFile: onImportFile,
+        notice: notice,
         importInputRef: importInputRef,
       });
     }

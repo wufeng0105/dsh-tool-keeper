@@ -36,7 +36,6 @@ function makeData(overrides = {}) {
   return Object.assign({
     ok: true,
     patched: true,
-    enabled: true,
     problems: [],
     diagnostics: [],
     groups: [
@@ -332,7 +331,7 @@ test('ui: 非保护工具显示开关（含 MCP 头部总开关）', () => {
   const html = renderView(makeData(), { expanded: ALL_OPEN });
   const switches = html.match(/role="switch"/g) || [];
   // 3 个行级开关 + tinyfish 组头部 1 个服务器总开关
-  assert.equal(switches.length, 4, '三个非保护工具三个行开关 + 一个服务器总开关');
+  assert.equal(switches.length, 4, '三个行开关 + 一个服务器总开关');
 });
 
 test('ui: 保护工具不显示开关，标「受保护」', () => {
@@ -510,10 +509,6 @@ test('ui: 开关决策不改原对象', () => {
   mod.__testing.nextToolsAfterToggle(before, 'b', 'keep');
   assert.deepEqual(before, { a: 'drop' }, '不能改传入的 tools');
 });
-
-// ─────────────────────────────────────────────
-// 有隐藏时才在摘要里提节省
-// ─────────────────────────────────────────────
 test('ui: 有隐藏时才在摘要里提已隐藏数', () => {
   const none = renderView(makeData());
   assert.ok(!none.includes('已隐藏'), '没有隐藏时不该提已隐藏');
@@ -530,24 +525,9 @@ test('ui: 有隐藏时才在摘要里提已隐藏数', () => {
 // ─────────────────────────────────────────────
 // 开关状态必须来自引擎判定，不能自己从 rules.tools 推
 // ─────────────────────────────────────────────
-test('ui: 服务器白名单导致的隐藏，开关显示为关', () => {
-  const data = makeData();
-  // 配置里 tinyfish 只留 search；fetch_content 被服务器白名单丢掉
-  data.groups[1].roles[1].effective = 'drop';
-  data.groups[1].roles[1].source = 'server';
-  // rules.tools 里什么都没有 —— 旧实现会把它显示成「开」，那是说谎
-  data.rules.tools = {};
-
-  const html = renderView(data, { expanded: ALL_OPEN });
-  const checked = html.match(/aria-checked="true"/g) || [];
-  // 2 个行级开 + 1 个服务器总开（服务器级关闭只丢 fetch_content，不影响头部开关）
-  assert.equal(checked.length, 3, '被服务器规则丢掉的工具不能显示为开');
-  assert.ok(html.includes('服务器规则关闭'), '必须说明为什么这一行是关的');
-});
-
 test('ui: rules.tools 里的 drop 不直接决定开关（以 effective 为准）', () => {
   const data = makeData();
-  // tools 说 drop，但引擎判定 keep（例如保护工具覆盖了一切）
+  // tools 说 drop，但引擎判定 keep（例如单工具 keep 覆盖了一切）
   data.rules.tools['create_goal'] = 'drop';
   data.groups[0].roles[2].effective = 'keep';
   data.groups[0].roles[2].source = 'tool';
