@@ -78,7 +78,6 @@ export function apply(ctx, config) {
   const liveTools = new Map();
   /** 此刻真的注册着的工具名。 */
   const liveNames = () => [...liveTools.keys()];
-
   const catalog = new ToolCatalog();
   const missingParams = new Map(); // toolName -> string[]
 
@@ -149,6 +148,14 @@ export function apply(ctx, config) {
     },
     configPath: path,
     loadedHash,
+    /**
+     * 这个工具此刻是否真的注册着。
+     *
+     * 目录（catalog）只增不减，用来记住「见过哪些工具」——还原原文、
+     * 展开编辑都要它。但它不能回答「现在在不在」，两者混用就会让页面
+     * 把断线服务器的全套工具显示成可用。
+     */
+    isLive: (name) => liveTools.has(name),
     instructions: {
       installed: instructionsState.installed,
       removed: [...instructionsState.removed],
@@ -199,11 +206,85 @@ export function apply(ctx, config) {
  *
  * @param liveTools - name → 当前份数
  * @param name - 工具名
+ * @returns {boolean} 键是否存在并被减过；减一个不存在的键返回 false
  */
 function decrementLive(liveTools, name) {
   const n = liveTools.get(name) ?? 0;
-  if (n <= 1) liveTools.delete(name);
+  if (n === 0) return false;
+  if (n === 1) liveTools.delete(name);
   else liveTools.set(name, n - 1);
+  return true;
+}
+
+/**
+ * 给宿主的 disposer 挂上「注销即减计数」。
+ *
+ * 三个必须照顾到的性质（都来自宿主实现，`cordis` 的 `ctx.effect`）：
+ *
+ * 1. **返回值要透传**：宿主的 disposer 不是普通函数，是带 `.then` 的
+ *    thenable（`wrapper.then = async (...) => ...`），调用方可以 `await` 它
+ *    等异步拆除完成。包成返回 undefined 的普通函数，会让 `await` 立刻继续，
+ *    等于报出一件还没发生的事。
+ * 2. **幂等**：宿主自己的 disposer 是幂等的，重复调用是空操作。计数必须
+ *    同样幂等，否则注销两次会退两份，把还活着的同名工具判成没了——从
+ *    「该响的不响」变成「不该响的乱响」，更糟。
+ * 3. **同步抛错也要减**：宿主的 undo 可能同步抛错，那时工具实际已经拆掉了。
+ *
+ * @param dispose - 宿主 register 返回的 disposer
+ * @param nm - 工具名
+ * @param named - 是否是有名字的工具（无名字的不计数）
+ * @param liveTools - name → 当前份数
+ * @param log - 日志出口
+ * @returns 与原来等价的可调用对象（保持 thenable 性质）
+ */
+function trackDisposer(dispose, nm, named, liveTools, log, missingParams) {
+  if (!named || typeof dispose !== 'function') return dispose;
+
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    if (!decrementLive(liveTools, nm)) {
+      // 减到不存在的键：说明计数与宿主状态已经对不上。
+      // 计数方向保守（不多减），但要说出来，否则这种错位永远查不到。
+      log.warn('live count underflow for ' + nm + ' (already zero)');
+    }
+    // 「参数名对不上」的结论也要跟着清掉：工具都注销了，那条记录描述的
+    // 是上一轮的事。不清的话，下次注册同名的工具时它会带着旧参数名一起
+    // 冒出来——用户改对了参数、重启了，警告还在。这是「某个时刻算出的
+    // 结论被当作此刻的事实」的又一个实例。
+    missingParams?.delete(nm);
+  };
+
+  const wrapper = function () {
+    try {
+      const result = dispose();
+      // 宿主可能返回 Promise / thenable：等它落定再减，
+      // 否则会出现「计数说没了、实际还没拆完」。
+      if (result !== null && typeof result === 'object' && typeof result.then === 'function') {
+        return Promise.resolve(result).finally(release);
+      }
+      release();
+      return result;
+    } catch (error) {
+      // 同步抛错：宿主已经拆掉了，计数必须跟着退
+      release();
+      log.warn('tool disposer failed for ' + nm + ': ' + String(error?.message ?? error));
+      throw error;
+    }
+  };
+
+  // 保住 thenable：宿主靠 wrapper.then 支持 await dispose()。
+  // 不复制它，调用方 await 我们的包装器会立刻继续，异步拆除还没完成。
+  if (typeof dispose.then === 'function') {
+    wrapper.then = (...args) => Promise.resolve(dispose.then(...args));
+  }
+  // 宿主在 disposer 上挂的元数据（`symbols.effect`）也带上，
+  // 否则 ctx.getEffects() 的树里会看不到这个 effect。
+  for (const sym of Object.getOwnPropertySymbols(dispose)) {
+    try { wrapper[sym] = dispose[sym]; } catch { /* 只读符号，跳过 */ }
+  }
+  return wrapper;
 }
 
 /** 装 register 补丁。任何异常都返回 patched:false 而不是抛出。 */
@@ -230,17 +311,29 @@ function installPatch(ctx, rules, liveTools, catalog, missingParams, log) {
     let verdict;
     const nm = definition === null || definition === undefined ? undefined : definition.name;
     const named = typeof nm === 'string' && nm !== '';
+    let counted = false;
     try {
       // 先留原文（一键还原、界面展开编辑的共同前置），必须在改写之前
       catalog.record(definition);
       if (named) {
         liveTools.set(nm, (liveTools.get(nm) ?? 0) + 1);
+        counted = true;
       }
       verdict = applyToDefinition(definition, rules);
     } catch (error) {
-      // 自己的判定出错时绝不阻断注册（DESIGN「七、可靠性与已知风险」）
+      // 自己的判定出错时绝不阻断注册（DESIGN「七、可靠性与已知风险」）。
+      // 这里不退计数：紧跟着会调用 original.call 真的把它注册上，
+      // 退掉就成了「明明注册成功、却被判为不在线」的假警报。
+      // 只有宿主那一步也抛错时，才在下面退回去。
       log.warn('decision failed, passing the tool through unchanged: ' + String(error?.message ?? error));
-      return original.call(this, definition, options);
+      let handedOff;
+      try {
+        handedOff = original.call(this, definition, options);
+      } catch (hostError) {
+        if (counted) decrementLive(liveTools, nm);
+        throw hostError;
+      }
+      return trackDisposer(handedOff, nm, named, liveTools, log, missingParams);
     }
     if (verdict.drop) {
       // 不注册：返回一个无害的 disposer，因为调用方会在下一轮同步时调用它。
@@ -258,19 +351,17 @@ function installPatch(ctx, rules, liveTools, catalog, missingParams, log) {
         missingParams.set(nm, verdict.missingParams);
       }
     }
-    const dispose = original.call(this, verdict.definition, options);
-    // 宿主注销工具时会调用这个 disposer（`dsh-tools/src/index.ts:148-152`
-    // 返回 layers.effect 的 disposer）。不挂钩，名字会永远留在 liveTools 里，
-    // 诊断就以为那个工具还在——「规则已失效」这类警告从此不出现。
-    if (named && typeof dispose === 'function') {
-      return () => {
-        try { dispose(); } catch (error) {
-          log.warn('tool disposer failed for ' + nm + ': ' + String(error?.message ?? error));
-        }
-        decrementLive(liveTools, nm);
-      };
+    // 宿主可能在这里抛错（重名、名字被保留、output 不合法……）。
+    // 那这次注册根本没成，计数必须跟着退回——否则工具明明不在，
+    // 诊断却以为它在线，那些「规则已失效」的警告从此再也不出现。
+    let handedOff;
+    try {
+      handedOff = original.call(this, verdict.definition, options);
+    } catch (error) {
+      if (counted) decrementLive(liveTools, nm);
+      throw error;
     }
-    return dispose;
+    return trackDisposer(handedOff, nm, named, liveTools, log, missingParams);
   };
 
   let installed = false;

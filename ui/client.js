@@ -556,6 +556,10 @@ window.__ModuleLoader__.load({
       var visible = [];
       groups.forEach(function (g) { visible = visible.concat(g.roles); });
       var visibleHidden = visible.filter(isHidden);
+      // 「在线」= 宿主此刻真的注册着（role.live）。缺这个字段的旧载荷当作未知，
+      // 不要用目录数冒充在线数——那正是本插件要消灭的那类说法。
+      var liveKnown = visible.length > 0 && visible.every(function (r) { return typeof r.live === 'boolean'; });
+      var visibleLive = liveKnown ? visible.filter(function (r) { return r.live === true; }).length : null;
 
       // 工具栏按钮按「当前是否全开」换文案：默认折叠 → 显示「展开」；
       // 全部展开 → 显示「折叠」。搜索态强制展开，按钮此时不参与判断。
@@ -651,10 +655,15 @@ window.__ModuleLoader__.load({
           ),
         ),
 
-        /* 摘要：只报工具数量。搜索时跟着变，否则会和列表自相矛盾。 */
+        /* 摘要：报工具数量。搜索时跟着变，否则会和列表自相矛盾。 */
         h('p', { className: 'tw-summary' },
           (query === '' ? '共 ' : '筛选出 ') + visible.length + ' 个工具' +
           (query !== '' ? '（全部 ' + all.length + ' 个）' : ''),
+          // 目录数是「见过多少」，在线数是「此刻有多少」。两者不等时必须说出来，
+          // 否则用户会以为断线服务器的工具也能用。
+          visibleLive !== null && visibleLive !== visible.length
+            ? ' · 其中 ' + visibleLive + ' 个在线'
+            : null,
           visibleHidden.length > 0
             ? ' · 已隐藏 ' + visibleHidden.length + ' 个'
             : null,

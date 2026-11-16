@@ -205,6 +205,11 @@ export function mountApi(ctx, deps) {
                   originalDescription: e.description,
                   // 引擎的实际判定，页面开关以此为准
                   effective: verdict.action === 'drop' ? 'drop' : 'keep',
+                  // 宿主此刻是否真的注册着它。
+                  // 目录（catalog）是「见过哪些工具」，只增不减；这个字段才是
+                  // 「现在在线」。两者不是一回事：服务器断开后，目录里还留着它
+                  // 的全套工具，页面若只报目录数，就等于说了一件不成立的话。
+                  live: typeof s.isLive === 'function' ? s.isLive(e.name) : undefined,
                   // 为什么是这个判定：页面据此说明「被服务器开关关掉」还是「被保护」
                   source: sourceOf(verdict.reason),
                 };
