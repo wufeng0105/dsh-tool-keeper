@@ -11,13 +11,13 @@ npm install    # ui.test.js 要真的渲染组件，不是看源码字符串
 npm test
 ```
 
-205 条，分六组：
+234 条，分六组：
 
 | 文件 | 测什么 |
 |---|---|
-| `tests/rules.test.js` | 纯函数核心：配置解析、判定优先级、参数改写、诊断 |
+| `tests/rules.test.js` | 纯函数核心：配置解析（含 servers.<名>.rewrite）、判定优先级、参数改写、诊断 |
 | `tests/index.test.js` | 宿主半：补丁安装与还原、失败可见、冻结服务 |
-| `tests/instructions.test.js` | 说明页半边：段落过滤、名单重写、格式漂移 fail-open、监听器安装/摘除 |
+| `tests/instructions.test.js` | 说明页半边：段落移除/改写/原文捕获、名单重写、格式漂移 fail-open、监听器安装/摘除 |
 | `tests/tool.test.js` | 模型工具 `tool_keeper` 的六个 action |
 | `tests/api.test.js` | HTTP 接口：同源校验、写前校验、指纹比对 |
 | `tests/ui.test.js` | 设置页：用 react 离线渲染真实 HTML 并断言结构 |
@@ -84,6 +84,7 @@ const openBtn = html.match(/<button[^>]*aria-expanded="true"[^>]*>mcp__tinyfish_
 | A11 | 插件级停用 | 在 DSH 插件页停用 → 不装补丁、全部工具放行 |
 | B7 | 说明页半边的工具侧对照 | 关某台 MCP → 新会话的持久化日志（`~/.dsh/` 下 sessions 目录）里 system 段不含 `## MCP resource servers` 名单里的该服务器名、也不含它的说明段；同一会话 `listTools` 该台工具全消失 |
 | B8 | 开回来两半一起恢复 | 重新启用 → 新会话里名单恢复含该名字、说明段回来，工具集合与关闭前一致 |
+| B9 | 服务器说明页改写 | 给开着的服务器写 `servers.<名>.rewrite` → 重启 → **新会话** JSONL 的 `system/message` 事件里：含改写文本、不含 `### MCP server: <名>`（整段替换的直接后果）；清空后重启 → 标题与原文回来 |
 
 ### 快速自查用的探测命令
 
@@ -102,7 +103,7 @@ Invoke-WebRequest -Uri "http://127.0.0.1:<端口>/tool-keeper/api" -Method Post 
 | `groups[].roles[].effective` | 引擎的实际判定（keep / drop），页面开关以此为准 |
 | `groups[].roles[].source` | 判定来自哪层规则：`protected` / `tool` / `server-disabled` / `rewrite` / `none` |
 | `rules.disabledServers` | 停用的服务器集合，页面服务器开关以此为准 |
-| `instructions` | 说明页半边的运行时事实：`installed`（监听器装上没）、`removed`（**最近一次组装**里真的被移除的服务器名——最近一次，多会话共享进程内状态） |
+| `instructions` | 说明页半边的运行时事实：`installed`（监听器装上没）、`removed`（**最近一次组装**里真的被移除的服务器名）、`rewritten`（真的被替换过的）、`texts`（各服务器原始说明；**只给设置页**，`tool_keeper` 的 status 不含它） |
 
 **注意**：探测不存在的路径返回 **405 而不是 404**（见 [HOST-CONTRACT](./HOST-CONTRACT.md)）。看到 405 不代表路由存在，要拿明确不存在的路径做对照。
 

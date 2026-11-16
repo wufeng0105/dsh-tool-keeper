@@ -127,6 +127,11 @@ window.__ModuleLoader__.load({
       '.tw-editor:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}',
       '.tw-detailActions{display:flex;align-items:center;gap:10px}',
       '.tw-dirty{font-size:11px;line-height:13px;color:var(--dsw-alias-state-warn-primary)}',
+      '.tw-detailHint{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary)}',
+      '.tw-editServer{flex:none;margin-left:12px;height:26px;padding:0 10px;font-size:12px;line-height:24px;border-radius:6px;border:.5px solid var(--dsw-alias-border-l3);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-family:inherit}',
+      '.tw-editServer:hover{background:var(--dsw-alias-bg-l2);color:var(--dsw-alias-label-primary)}',
+      '.tw-editServer:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
+      '.tw-editServer[aria-expanded="true"]{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}',
 
       /* ── 按钮：与搜索框同高 34px，内容垂直居中 ── */
       '.tw-btn{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;height:34px;font:inherit;font-size:13px;line-height:20px;padding:0 14px;border-radius:var(--dsw-radius-sm);border:1px solid var(--dsw-alias-border-l2);background:none;color:var(--dsw-alias-label-primary);cursor:pointer;transition:background 150ms ease;white-space:nowrap}',
@@ -195,6 +200,22 @@ window.__ModuleLoader__.load({
       var next = Object.assign({}, tools);
       if (effective === 'drop') next[name] = 'keep';
       else next[name] = 'drop';
+      return next;
+    }
+
+    /**
+     * 改写某台服务器的说明页后应写入的 `servers` 映射。
+     *
+     * 只动一个字段：`rewrite`。空串 = 恢复原样（删字段）；条目里三个字段都空才删整条
+     * （否则「打开服务器」会顺手把改写删掉，这是 0.5.0 的既有缺陷）。
+     * 抽成纯函数：这是唯一写服务器说明的交互，必须能单独测。
+     */
+    function nextServersAfterRewrite(servers, server, text) {
+      var next = Object.assign({}, servers || {});
+      var entry = Object.assign({}, next[server] || {});
+      if (text === '') delete entry.rewrite; else entry.rewrite = text;
+      if (entry.enabled === undefined && entry.rewrite === undefined) delete next[server];
+      else next[server] = entry;
       return next;
     }
 
@@ -323,6 +344,54 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * 服务器说明页的编辑面板：左原文（含「### MCP server: 名字」标题行）、右改写。
+     * 三种原文状态必须可区分：有文本 / 空串（服务器没提供说明）/ 键缺失（还没组装过）。
+     */
+    function ServerDetail(props) {
+      var original = props.originalText;
+      var originalText;
+      if (original === undefined) originalText = '暂时读不到原始说明（发一次消息后点刷新）';
+      else if (original === '') originalText = '该服务器没有提供说明（你写的内容会作为它的说明出现）';
+      else originalText = original;
+      // 运行时事实：改写配了，上次组装到底替没替换
+      var effectHint = props.configured === true
+        ? (props.applied === true ? '上次组装已生效' : '尚未生效（重启后生效）')
+        : null;
+      return h('div', { className: 'tw-detail' },
+        props.disabled === true
+          ? h('p', { className: 'tw-detailHint' }, '该服务器已停用，改写会在启用后生效')
+          : null,
+        h('div', { className: 'tw-fields' },
+          h('div', { className: 'tw-field' },
+            h('span', { className: 'tw-fieldLabel' }, '服务器原始说明'),
+            h('div', { className: 'tw-box tw-original' }, originalText),
+          ),
+          h('div', { className: 'tw-field' },
+            h('span', { className: 'tw-fieldLabel' }, '改写为（留空恢复原文）'),
+            h('textarea', {
+              className: 'tw-box tw-editor',
+              spellCheck: false,
+              'aria-label': '改写服务器说明 ' + props.server,
+              placeholder: '整段替换；含「### MCP server: 名字」那行标题，想保留就自己写回去',
+              value: props.draft,
+              onChange: function (e) { props.onDraft(e.target.value); },
+            }),
+          ),
+        ),
+        h('div', { className: 'tw-detailActions' },
+          h('button', {
+            className: 'tw-btn',
+            disabled: props.busy || props.dirty !== true,
+            onClick: props.onSave,
+          }, '保存说明'),
+          h('button', { className: 'tw-btn', disabled: props.busy, onClick: props.onCancel }, '取消'),
+          props.dirty === true ? h('span', { className: 'tw-dirty' }, '有未保存修改') : null,
+          effectHint ? h('span', { className: 'tw-detailHint' }, effectHint) : null,
+        ),
+      );
+    }
+
+    /**
      * 一个可折叠的分组卡片。整张卡包住标题与工具，标题行就是卡片头：
      * 左区（chevron+图标+标题+计数）整体是折叠按钮；MCP 组在最右另有一个
      * 服务器总开关，独立于折叠按钮 —— 两个热区互不误触。
@@ -343,6 +412,10 @@ window.__ModuleLoader__.load({
       var instructions = props.instructions || { installed: false, removed: [] };
       var instructionsHidden = serverDisabled
         && (instructions.removed || []).indexOf(serverName) >= 0;
+      // 说明页改写（0.6.0）：当前配置值、上次组装是否真的替换过
+      var serverRewrites = props.serverRewrites || {};
+      var currentRewrite = serverRewrites[serverName];
+      var editing = isMcp && props.editingServer === serverName;
 
       return h('section', { className: 'tw-group' },
         h('div', { className: 'tw-groupHeader' },
@@ -374,7 +447,35 @@ window.__ModuleLoader__.load({
               onClick: function () { props.onToggleServer(serverName, serverDisabled); },
             })
             : null,
+          // 「编辑」在最右、开关之后、仍在本行内：危险控件是开关，
+          // 手往右偏落在无害的编辑上。必须是 header 最后一个子节点，且不在折叠按钮里。
+          isMcp
+            ? h('button', {
+              type: 'button',
+              className: 'tw-editServer',
+              'aria-expanded': editing,
+              'aria-label': '编辑服务器说明',
+              title: '编辑服务器说明',
+              disabled: props.busy,
+              onClick: function () { props.onEditServer(serverName); },
+            }, '编辑')
+            : null,
         ),
+        editing
+          ? h(ServerDetail, {
+            server: serverName,
+            originalText: (props.serverTexts || {})[serverName],
+            draft: props.serverDraft === undefined ? '' : props.serverDraft,
+            dirty: (props.serverDraft === undefined ? '' : props.serverDraft) !== (currentRewrite === undefined ? '' : currentRewrite),
+            busy: props.busy,
+            disabled: serverDisabled,
+            configured: currentRewrite !== undefined,
+            applied: (props.rewrittenServers || []).indexOf(serverName) >= 0,
+            onDraft: props.onServerDraft,
+            onSave: props.onSaveServer,
+            onCancel: props.onCancelServer,
+          })
+          : null,
         open
           ? h('div', { className: 'tw-list' },
             roles.map(function (role) {
@@ -458,6 +559,16 @@ window.__ModuleLoader__.load({
       });
       // 引擎判定的停用服务器集合（rules.disabledServers），头部总开关读它
       var disabledServers = data.rules.disabledServers || [];
+      // 说明页改写三件套：配置值、原始文本、上次组装是否真的替换过。
+      // 全部容缺省（旧快照 / 测试桩可能没有）。
+      var serverEntries = data.rules.servers || {};
+      var serverRewrites = {};
+      Object.keys(serverEntries).forEach(function (n) {
+        var e = serverEntries[n];
+        if (e && typeof e.rewrite === 'string' && e.rewrite !== '') serverRewrites[n] = e.rewrite;
+      });
+      var serverTexts = (data.instructions && data.instructions.texts) || {};
+      var rewrittenServers = (data.instructions && data.instructions.rewritten) || [];
 
       return h('div', { className: 'tw' },
         /* 插件级启停归 DSH 插件页；这里只显示拦截补丁是否装上 */
@@ -564,6 +675,15 @@ window.__ModuleLoader__.load({
                 onDraft: props.onDraft,
                 onToggle: props.onToggle,
                 onSaveRewrite: props.onSaveRewrite,
+                serverRewrites: serverRewrites,
+                serverTexts: serverTexts,
+                rewrittenServers: rewrittenServers,
+                editingServer: props.editingServer,
+                serverDraft: props.serverDraft,
+                onEditServer: props.onEditServer,
+                onServerDraft: props.onServerDraft,
+                onSaveServer: props.onSaveServer,
+                onCancelServer: props.onCancelServer,
               });
             })),
 
@@ -589,6 +709,8 @@ window.__ModuleLoader__.load({
       var s6 = React.useState({}); var expandedGroups = s6[0]; var setExpandedGroups = s6[1];
       var s7 = React.useState(''); var query = s7[0]; var setQuery = s7[1];
       var s8 = React.useState(null); var notice = s8[0]; var setNotice = s8[1];
+      var s9 = React.useState(null); var editingServer = s9[0]; var setEditingServer = s9[1];
+      var s10 = React.useState(''); var serverDraft = s10[0]; var setServerDraft = s10[1];
       var importInputRef = React.useRef(null);
 
       var load = React.useCallback(function () {
@@ -611,6 +733,30 @@ window.__ModuleLoader__.load({
 
       var tools = data.rules.tools || {};
       var rewrites = data.rules.rewrites || {};
+      var servers = data.rules.servers || {};
+
+      /** 打开/收起某台服务器的说明页编辑面板。打开时草稿 = 当前改写值。 */
+      function onEditServer(server) {
+        if (editingServer === server) { setEditingServer(null); setServerDraft(''); return; }
+        setEditingServer(server);
+        var entry = servers[server] || {};
+        setServerDraft(typeof entry.rewrite === 'string' ? entry.rewrite : '');
+      }
+
+      /** 保存服务器说明页改写：只动 servers 条目的 rewrite 字段。 */
+      function onSaveServer() {
+        if (editingServer === null) return;
+        var next = nextServersAfterRewrite(servers, editingServer, serverDraft);
+        setBusy(true); setError(null);
+        call({ op: 'set', servers: next }).then(function () {
+          return call({ op: 'state' });
+        }).then(function (next2) {
+          setData(next2); setEditingServer(null); setServerDraft('');
+        }).catch(function (e) { setError(e.message); })
+          .then(function () { setBusy(false); });
+      }
+
+      function onCancelServer() { setEditingServer(null); setServerDraft(''); }
 
       function persist(nextTools, done) {
         setBusy(true); setError(null);
@@ -752,6 +898,12 @@ window.__ModuleLoader__.load({
         onQuery: setQuery,
         onToggleGroup: onToggleGroup,
         onToggleServer: onToggleServer,
+        editingServer: editingServer,
+        serverDraft: serverDraft,
+        onEditServer: onEditServer,
+        onServerDraft: setServerDraft,
+        onSaveServer: onSaveServer,
+        onCancelServer: onCancelServer,
         onToggleAll: onToggleAll,
         onExpand: onExpand,
         onDraft: setDraft,
@@ -801,6 +953,7 @@ window.__ModuleLoader__.load({
     exports.__testing = {
       num: num,
       nextToolsAfterToggle: nextToolsAfterToggle,
+      nextServersAfterRewrite: nextServersAfterRewrite,
       View: ToolKeeperView,
       Section: Section,
       CSS: CSS,

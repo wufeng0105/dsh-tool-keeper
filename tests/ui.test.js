@@ -242,7 +242,8 @@ test('ui: 分组头部是整卡可点按钮，带 chevron', () => {
 
 test('ui: 默认全折叠，aria-expanded=false', () => {
   const html = renderView(makeData());
-  const expanded = html.match(/aria-expanded="false"/g) || [];
+  // 只数分组折叠按钮：0.6.0 起 MCP 组头还有一个「编辑」按钮也带 aria-expanded
+  const expanded = html.match(/class="tw-groupToggle"[^>]*aria-expanded="false"|aria-expanded="false"[^>]*class="tw-groupToggle"/g) || [];
   assert.equal(expanded.length, 2, '默认全部折叠');
   assert.ok(!html.includes('>read<'), '折叠组内的工具不应出现');
   assert.ok(!html.includes('mcp__tinyfish__search'), '折叠组内的工具不应出现');
@@ -802,4 +803,98 @@ test('ui: 未重启提示同时覆盖工具与说明页', () => {
   data.stale = true;
   const html = renderView(data);
   assert.ok(html.includes('说明页'), 'stale 提示必须提到说明页');
+});
+
+// ─────────────────────────────────────────────
+// 0.6.0：服务器说明页编辑（行尾按钮 + 面板 + 纯函数）
+// ─────────────────────────────────────────────
+const ONLY_MCP = () => makeData({
+  groups: [{
+    group: 'mcp:tinyfish',
+    roles: [
+      { name: 'mcp__tinyfish__search', server: 'tinyfish', protected: false, effective: 'keep', source: 'none', chars: 2080, originalDescription: '搜索网页。' },
+    ],
+  }],
+});
+
+test('ui: MCP 组头有「编辑」，在内置工具组没有', () => {
+  const both = renderView(makeData());
+  const mcpGroups = makeData().groups.filter(g => g.group !== 'core').length;
+  const buttons = (both.match(/class="tw-editServer"/g) || []).length;
+  assert.equal(buttons, mcpGroups, '每台 MCP 一个编辑按钮，内置工具组没有');
+  assert.ok(both.includes('aria-label="编辑服务器说明"'));
+
+  const coreOnly = renderView(makeData({ groups: [makeData().groups[0]] }));
+  assert.ok(!coreOnly.includes('tw-editServer'), '内置工具组不得出现');
+});
+
+test('ui: 编辑按钮在开关之后、且在折叠按钮之外', () => {
+  const html = renderView(ONLY_MCP());
+  const toggle = html.indexOf('tw-groupToggle');
+  const toggleEnd = html.indexOf('</button>', toggle);
+  const toggleBlock = html.slice(toggle, toggleEnd);
+  assert.ok(toggleBlock.includes('aria-expanded="false"'), '折叠按钮仍在');
+  assert.ok(!toggleBlock.includes('tw-editServer'), '编辑按钮不能嵌在折叠按钮里（非法嵌套）');
+  const sw = html.indexOf('tw-switch');
+  const edit = html.indexOf('tw-editServer');
+  assert.ok(sw >= 0 && edit > sw, '编辑按钮必须在开关之后（手往右偏落在无害处）');
+});
+
+test('ui: 点编辑出现面板，左原文右编辑框', () => {
+  const data = ONLY_MCP();
+  data.instructions = { installed: true, removed: [], rewritten: [], texts: { tinyfish: '### MCP server: tinyfish\n\n原文' } };
+  const html = renderView(data, { editingServer: 'tinyfish', serverDraft: '' });
+  assert.ok(html.includes('服务器原始说明'));
+  assert.ok(html.includes('### MCP server: tinyfish'), '左边要能看到原文（含标题行）');
+  assert.ok(/<textarea[^>]*tw-editor/.test(html), '右边是编辑框');
+  assert.ok(html.includes('保存说明'));
+  assert.ok(html.includes('取消'));
+  assert.ok(!html.includes('上次组装已生效'), '没配改写时不给「已生效」的假话');
+});
+
+test('ui: 原文缺失与空串的提示必须不同（不冒充）', () => {
+  const missing = ONLY_MCP();
+  missing.instructions = { installed: true, removed: [], rewritten: [], texts: {} };
+  const htmlMissing = renderView(missing, { editingServer: 'tinyfish', serverDraft: '' });
+  assert.ok(htmlMissing.includes('暂时读不到原始说明'));
+
+  const empty = ONLY_MCP();
+  empty.instructions = { installed: true, removed: [], rewritten: [], texts: { tinyfish: '' } };
+  const htmlEmpty = renderView(empty, { editingServer: 'tinyfish', serverDraft: '' });
+  assert.ok(htmlEmpty.includes('该服务器没有提供说明'));
+  assert.ok(!htmlEmpty.includes('暂时读不到原始说明'), '空串不是「读不到」');
+});
+
+test('ui: 停用时面板提示「启用后生效」，改写生效时提示「上次组装已生效」', () => {
+  const disabled = ONLY_MCP();
+  disabled.rules.disabledServers = ['tinyfish'];
+  disabled.instructions = { installed: true, removed: ['tinyfish'], rewritten: [], texts: { tinyfish: '原文' } };
+  const htmlDisabled = renderView(disabled, { editingServer: 'tinyfish', serverDraft: '我的改写' });
+  assert.ok(htmlDisabled.includes('该服务器已停用，改写会在启用后生效'));
+
+  const applied = ONLY_MCP();
+  applied.rules.disabledServers = [];
+  applied.rules.servers = { tinyfish: { rewrite: '我的改写' } };
+  applied.instructions = { installed: true, removed: [], rewritten: ['tinyfish'], texts: { tinyfish: '原文' } };
+  const htmlApplied = renderView(applied, { editingServer: 'tinyfish', serverDraft: '我的改写' });
+  assert.ok(htmlApplied.includes('上次组装已生效'));
+});
+
+test('ui: nextServersAfterRewrite 四种情形', () => {
+  const { mod } = loadUi();
+  const f = mod.__testing.nextServersAfterRewrite;
+  const J = v => JSON.parse(JSON.stringify(v));
+  // 跨 realm 对象要 JSON 归一化后比较（vm 里建的对象原型不同）
+  // 1) 设值：新增条目
+  assert.deepEqual(J(f({}, 'x', '新说明')), { x: { rewrite: '新说明' } });
+  // 2) 改值：保留 enabled
+  assert.deepEqual(J(f({ x: { enabled: false } }, 'x', '新说明')), { x: { enabled: false, rewrite: '新说明' } });
+  // 3) 清空：删 rewrite，保留 enabled
+  assert.deepEqual(J(f({ x: { enabled: false, rewrite: '旧' } }, 'x', '')), { x: { enabled: false } });
+  // 4) 清空后条目全空 → 删整条
+  assert.deepEqual(J(f({ x: { rewrite: '旧' } }, 'x', '')), {});
+  // 不改入参
+  const src = { x: { rewrite: '旧' } };
+  f(src, 'x', '新');
+  assert.deepEqual(src, { x: { rewrite: '旧' } });
 });

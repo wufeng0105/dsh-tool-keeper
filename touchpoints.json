@@ -169,15 +169,30 @@
       "surface": "convention",
       "ref": "系统提示词段落名 mcp:<server>",
       "code": "instructions.js 的 filterSections（name.startsWith('mcp:')）",
-      "why": "服务器说明段的命名约定。改名则整段移除失效；fail-open 保证不误杀，但开关的说明页半边静默失效",
+      "why": "服务器说明段的命名约定。改名则移除与改写都失效；fail-open 保证不误杀，但开关的说明页半边与改写会静默失效",
       "probe": {
         "kind": "none",
         "rationale": "段落名在运行时由 dsh-mcp-client 注册，不启动宿主无法机判当前版本仍用 mcp:<server>",
-        "alternative": "L3 源码：dsh-mcp-client/src/server-context.ts registerServerContext 注册 name='mcp:'+server；真机 B7：新会话 system/message 不含 mcp:<停用服务器> 段"
+        "alternative": "L3 源码：dsh-mcp-client/src/server-context.ts registerServerContext 注册 name='mcp:'+server；真机 B7/B9：新会话 system/message 不含停用服务器的段、改写后不含该服务器的段"
       },
       "status": "source-checked",
-      "verifiedBy": "L3：dsh-mcp-client/src/server-context.ts（registerServerContext）；真机 B7 待 0.5.0 装机后执行",
-      "fallback": "约定漂移时 removed 为空 + 诊断「未见其说明段」，界面不冒充「已隐藏」"
+      "verifiedBy": "L3：dsh-mcp-client/src/server-context.ts（registerServerContext）；真机 B7 已过（0.5.0），B9 待 0.6.0 装机后执行",
+      "fallback": "约定漂移时 removed/rewritten 为空 + 诊断「未见其说明段 / 改写本次未生效」，界面不冒充「已隐藏/已生效」"
+    },
+    {
+      "id": "convention.mcp-section-text-header",
+      "surface": "convention",
+      "ref": "服务器说明段正文自带 `### MCP server: <名>` 标题行",
+      "code": "instructions.js 的改写是整段替换（不保留标题）",
+      "why": "改写若被当成「只替换正文」就会把标题一起吞掉而不自知；反过来，若宿主某版把标题移出正文，界面显示的原文与实际替换范围会不一致",
+      "probe": {
+        "kind": "none",
+        "rationale": "正文拼接发生在连接建立时，静态机判不了；也没有 inspect 接口能读到某台服务器的 instructions 原文",
+        "alternative": "L3 源码：dsh-mcp-client/src/connection.ts:316-317（text = '### MCP server: ' + 名 + '\\n\\n' + 说明；无说明为 ''）；真机 B9：改写后新会话不含 `### MCP server: <名>`"
+      },
+      "status": "source-checked",
+      "verifiedBy": "L3：dsh-mcp-client/src/connection.ts:316-317；单测覆盖整段替换语义；真机 B9 待执行",
+      "fallback": "若标题不在正文里，改写只会替换正文而标题保留——行为仍可用，但 README 的描述会过期，需同步文档"
     },
     {
       "id": "convention.mcp-resource-servers-text",

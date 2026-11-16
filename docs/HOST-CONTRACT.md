@@ -39,6 +39,8 @@
 | complete 段不可观测 | waterfall 里的 `AssembledSection` 只有 name/text/interpolate（complete 标志被剥掉）；complete 段在 waterfall **之后**无条件恢复 → 完整提示词预设场景本插件滤不动，也检测不到 | `dsh-system-prompt/src/index.ts:667-672,693` |
 | persona-prefix 恒存在 | 构造器总是注册 `deployment:persona-prefix`（text 可为 ''）；dsh-persona 仅在 `config.complete` 时另注册 scoped 同名 complete 段 → 「只有一个 persona-prefix 段」之类的启发式检测是错的 | `dsh-system-prompt/src/index.ts:463-468`；`dsh-persona/src/index.ts:62-68` |
 | 服务器说明段 | 名字 `mcp:<server>`，order 3100，interpolate:false，text 取 `connection.instructions()` | `dsh-mcp-client/src/server-context.ts` registerServerContext |
+| 段标题在正文里 | 正文 = `'### MCP server: ' + 名 + '\n\n' + 说明`；服务器没给说明时正文为 `''`（段仍存在） | `dsh-mcp-client/src/connection.ts:316-317` |
+| 渲染只取 text | `renderPrompt` 对每段取 text（`interpolate === false` 时原样），丢弃空串段，用 `'\n\n'` 拼接；`name` 不参与渲染，也不产生标题 | `dsh-system-prompt/src/index.ts:297-302` |
 | 服务器名单段 | 名字 `mcp-resource-servers`；正文 = `'## MCP resource servers\n\nUse … as the server argument: ' + JSON.stringify(排序后的名字数组) + '.'`（**数组后有尾句点**） | `dsh-mcp-resources/src/index.ts:61-73` |
 
 **推论**：说明页过滤只能做「移除段 / 重写名单」，做不到「检测完整预设」；后者如实报告边界（见 KNOWN-ISSUES），不冒充。

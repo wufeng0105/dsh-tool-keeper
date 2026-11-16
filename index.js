@@ -79,7 +79,7 @@ export function apply(ctx, config) {
   }
 
   // 说明页半边：与工具补丁分开安装、分开还原，读同一份启动时规则（重启生效）。
-  const instructionsState = { installed: false, removed: [], diagnostics: [] };
+  const instructionsState = { installed: false, removed: [], rewritten: [], originals: new Map(), diagnostics: [] };
   const instructions = installInstructionsFilter(ctx, rules, instructionsState, log);
 
   // 定期把诊断算出来（首次注册后即可）
@@ -115,6 +115,10 @@ export function apply(ctx, config) {
     instructions: {
       installed: instructionsState.installed,
       removed: [...instructionsState.removed],
+      rewritten: [...(instructionsState.rewritten || [])],
+      // 原文只给设置页（api state）用；tool_keeper 的 status 会剥掉它，
+      // 避免模型一句 status 把 N×32KB 原文灌进上下文。
+      texts: Object.fromEntries(instructionsState.originals instanceof Map ? instructionsState.originals : []),
     },
     groups: [...catalog.groups()].map(([group, entries]) => ({
       group,

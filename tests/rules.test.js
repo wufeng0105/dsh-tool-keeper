@@ -439,3 +439,45 @@ test('normalizeConfig: 正常键不受影响', () => {
   assert.equal(rules.disabledServers.size, 1);
   assert.equal(rules.rewrites.size, 1);
 });
+
+// ─────────────────────────────────────────────
+// 0.6.0：servers.<名>.rewrite（说明页改写）
+// ─────────────────────────────────────────────
+test('rules: servers.<名>.rewrite 正常入库', () => {
+  const rules = rulesOf({ servers: { context7: { rewrite: '新的说明' } } });
+  assert.equal(rules.serverRewrites.get('context7'), '新的说明');
+  assert.equal(rules.disabledServers.has('context7'), false);
+});
+
+test('rules: rewrite 非字符串 → problem + 忽略该字段', () => {
+  const { rules, problems } = normalizeConfig({ servers: { x: { rewrite: 42 } } });
+  assert.equal(rules.serverRewrites.has('x'), false);
+  assert.ok(problems.some(p => /servers\.x\.rewrite/.test(p)));
+});
+
+test('rules: rewrite 空串/纯空白不报 problem 也不入库', () => {
+  for (const v of ['', '   ', '\n']) {
+    const { rules, problems } = normalizeConfig({ servers: { x: { rewrite: v } } });
+    assert.equal(rules.serverRewrites.has('x'), false);
+    assert.deepEqual(problems, []);
+  }
+});
+
+test('rules: 停用与改写互不干扰，decide 不受 rewrite 影响', () => {
+  const { rules } = normalizeConfig({
+    servers: { a: { enabled: false }, b: { rewrite: '说明改写' } },
+    tools: { 'mcp__b__t': 'drop' },
+  });
+  assert.ok(rules.disabledServers.has('a'));
+  assert.equal(rules.serverRewrites.get('b'), '说明改写');
+  // rewrite 只管说明页，不改变任何工具的可见性
+  assert.equal(decide('mcp__b__t', rules).action, 'drop');
+  assert.equal(decide('mcp__b__other', rules).action, 'keep');
+  assert.equal(decide('mcp__a__t', rules).action, 'drop');
+});
+
+test('rules: 停用 + 改写 → 诊断说清改写不会生效', () => {
+  const { rules } = normalizeConfig({ servers: { a: { enabled: false, rewrite: '写点什么' } } });
+  const out = diagnose(rules, ['mcp__a__t']);
+  assert.ok(out.some(d => d.target === 'servers.a.rewrite' && /已停用/.test(d.message)));
+});

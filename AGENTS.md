@@ -23,7 +23,7 @@
 | 部分 | 文件 | 说明 |
 |---|---|---|
 | 宿主半 | `index.js` | 包装 `ctx.tools.register`，`inject = ['tools']` |
-| 说明页半 | `instructions.js` | 组装期 waterfall 过滤 `mcp:<server>` 段与名单段；纯函数核心可单测 |
+| 说明页半 | `instructions.js` | 组装期 waterfall：移除（停用）/ 改写 `mcp:<server>` 段、剔除名单段名字、捕获原文；纯函数核心可单测 |
 | 判定核心 | `rules.js` | 纯函数，零宿主依赖，可直接单测 |
 | 模型工具 | `tool.js` | `tool_keeper`，6 个 action |
 | 设置页路由 | `api.js` | `/tool-keeper/api`，`state` / `set` / `reset` / `export` / `import` |
@@ -50,7 +50,7 @@
 
 ## 交付前
 
-1. `npm test` —— 205 条，全绿
+1. `npm test` —— 234 条，全绿
 2. `node <plugin-kit包>/skills/plugin-kit/scripts/preflight.mjs <项目根>` —— 0 FAIL
 3. **改断言就必须做变异测试**：故意改坏实现，确认变红，再还原。
 4. **升级 DSH 后跑体检三件套**（缺一不可）：
@@ -90,7 +90,7 @@
 
 | 入口 | 给谁 | 做什么 |
 |---|---|---|
-| 设置页 | 人 | 服务器开关、单工具开关、改写说明、导入导出、恢复出厂 |
+| 设置页 | 人 | 服务器开关、单工具开关、改写工具说明、改写服务器说明页、导入导出、恢复出厂 |
 | `tool_keeper` 工具 | 模型 | `status` / `list` / `server` / `tool` / `rewrite` / `reset` |
 
 两者写同一份 `~/.dsh/tool-keeper.json`，走同一套 `rules.js`。改一边另一边立刻可见。

@@ -325,7 +325,26 @@ test('tool: 正常写入仍然成功', async () => {
 test('tool: status 快照缺 instructions 时容缺省', async () => {
   const { definition, dir } = setup();
   const r = await definition.execute({ action: 'status' });
-  assert.deepEqual(r.instructions, { installed: false, removed: [] });
+  assert.deepEqual(r.instructions, { installed: false, removed: [], rewritten: [] });
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('tool: status 不带原文（texts 只给设置页，避免灌上下文）', async () => {
+  const dir = makeTmp();
+  const configPath = join(dir, 'tool-keeper.json');
+  const { ctx, captured } = makeCtx();
+  const deps = makeDeps(configPath);
+  deps.snapshot = () => ({
+    patched: true, configPath, diagnostics: [], problems: [],
+    instructions: {
+      installed: true, removed: [], rewritten: ['context7'],
+      texts: { context7: '### MCP server: context7\n\n' + 'x'.repeat(2000) },
+    },
+  });
+  registerTool(ctx, { configPath, ...deps });
+  const r = await captured.definition.execute({ action: 'status' });
+  assert.deepEqual(r.instructions, { installed: true, removed: [], rewritten: ['context7'] });
+  assert.equal(JSON.stringify(r).includes('### MCP server: context7'), false, 'status 不得夹带原文');
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -336,10 +355,76 @@ test('tool: status 透传 instructions 事实', async () => {
   const deps = makeDeps(configPath);
   deps.snapshot = () => ({
     patched: true, configPath, diagnostics: [], problems: [],
-    instructions: { installed: true, removed: ['rea'] },
+    instructions: { installed: true, removed: ['rea'], rewritten: [] },
   });
   registerTool(ctx, { configPath, ...deps });
   const r = await captured.definition.execute({ action: 'status' });
-  assert.deepEqual(r.instructions, { installed: true, removed: ['rea'] });
+  assert.deepEqual(r.instructions, { installed: true, removed: ['rea'], rewritten: [] });
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ─────────────────────────────────────────────
+// 0.6.0：action=server 的 text（服务器说明页改写）
+// ─────────────────────────────────────────────
+function setupWithConfig(config) {
+  const dir = makeTmp();
+  const configPath = join(dir, 'tool-keeper.json');
+  writeFileSync(configPath, JSON.stringify(config, null, 2));
+  const { ctx, captured } = makeCtx();
+  const deps = makeDeps(configPath);
+  registerTool(ctx, { configPath, ...deps });
+  return { dir, configPath, definition: captured.definition };
+}
+
+test('tool: server 只给 text 就写 rewrite', async () => {
+  const { definition, configPath, dir } = setupWithConfig({ servers: {}, tools: {}, rewrite: {} });
+  const r = await definition.execute({ action: 'server', server: 'context7', text: '新的说明页' });
+  assert.equal(r.ok, true);
+  const saved = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.equal(saved.servers.context7.rewrite, '新的说明页');
+  assert.equal(saved.servers.context7.enabled, undefined, '只写改写，不动开关');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('tool: server 同时给 enabled 与 text，互不覆盖', async () => {
+  const { definition, configPath, dir } = setupWithConfig({ servers: {}, tools: {}, rewrite: {} });
+  await definition.execute({ action: 'server', server: 'x', enabled: false, text: '说明' });
+  const saved = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.equal(saved.servers.x.enabled, false);
+  assert.equal(saved.servers.x.rewrite, '说明');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('tool: server 两个都不给 → EINVALID', async () => {
+  const { definition, dir } = setupWithConfig({ servers: {}, tools: {}, rewrite: {} });
+  await assert.rejects(
+    () => definition.execute({ action: 'server', server: 'x' }),
+    (error) => error.code === 'EINVALID',
+  );
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('tool: server text 空串删 rewrite；条目空了才删整条', async () => {
+  const { definition, configPath, dir } = setupWithConfig({
+    servers: { a: { enabled: false, rewrite: '旧改写' }, b: { rewrite: '只有改写' } }, tools: {}, rewrite: {},
+  });
+  await definition.execute({ action: 'server', server: 'a', text: '' });
+  let saved = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.deepEqual(saved.servers.a, { enabled: false }, '只删改写，保留停用');
+  await definition.execute({ action: 'server', server: 'b', text: '' });
+  saved = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.equal(saved.servers.b, undefined, '三个字段都空才删整条');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('tool: 打开服务器不得把 rewrite 删掉（P0 回归）', async () => {
+  const { definition, configPath, dir } = setupWithConfig({
+    servers: { context7: { rewrite: '留下的改写' } }, tools: {}, rewrite: {},
+  });
+  const r = await definition.execute({ action: 'server', server: 'context7', enabled: true });
+  assert.equal(r.ok, true);
+  const saved = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.equal(saved.servers.context7.rewrite, '留下的改写', '打开整台不能顺手删改写');
+  assert.equal(saved.servers.context7.enabled, undefined);
   rmSync(dir, { recursive: true, force: true });
 });

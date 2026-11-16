@@ -213,3 +213,122 @@ test('instructions: restore 摘除监听器', () => {
   result.restore();
   assert.equal(captured.disposed, 1);
 });
+
+// ─────────────────────────────────────────────
+// 0.6.0：服务器说明页改写
+// ─────────────────────────────────────────────
+const REWRITE_FIXTURE = () => [
+  { name: 'harness:identity', text: 'You are an AI agent.' },
+  { name: 'mcp:context7', text: '### MCP server: context7\n\n原来的说明正文' },
+  { name: 'mcp:tinyfish', text: '### MCP server: tinyfish\n\nTF 说明' },
+  { name: 'mcp-resource-servers', text: listText(['context7', 'tinyfish']) },
+];
+
+test('instructions: 改写整段替换说明段，强制 interpolate:false，并记原文', () => {
+  const input = REWRITE_FIXTURE();
+  const { sections, rewritten, originals } = filterSections(
+    input, [], new Map([['context7', '你的新说明']]),
+  );
+  const sec = sections.find(s => s.name === 'mcp:context7');
+  assert.equal(sec.text, '你的新说明');
+  assert.equal(sec.interpolate, false, '用户正文里的 {{ 不能在渲染时爆炸');
+  assert.deepEqual(rewritten, ['context7']);
+  assert.equal(originals.get('context7'), '### MCP server: context7\n\n原来的说明正文');
+  // 未配改写的段原样
+  assert.equal(sections.find(s => s.name === 'mcp:tinyfish').text, '### MCP server: tinyfish\n\nTF 说明');
+});
+
+test('instructions: 空串/纯空白改写视为没配，段原样但原文仍记', () => {
+  for (const empty of ['', '   ', '\n']) {
+    const input = REWRITE_FIXTURE();
+    const { sections, rewritten, originals } = filterSections(
+      input, [], new Map([['context7', empty]]),
+    );
+    assert.equal(sections.find(s => s.name === 'mcp:context7').text, '### MCP server: context7\n\n原来的说明正文');
+    assert.deepEqual(rewritten, []);
+    assert.equal(originals.get('context7'), '### MCP server: context7\n\n原来的说明正文');
+  }
+});
+
+test('instructions: 停用优先于改写：段被移除且不替换', () => {
+  const input = REWRITE_FIXTURE();
+  const { sections, removed, rewritten, originals, diagnostics } = filterSections(
+    input, ['context7'], new Map([['context7', '你的新说明']]),
+  );
+  assert.ok(!sections.some(s => s.name === 'mcp:context7'));
+  assert.deepEqual(removed, ['context7']);
+  assert.deepEqual(rewritten, []);
+  assert.equal(originals.get('context7'), '### MCP server: context7\n\n原来的说明正文');
+  // 停用+改写的配置诊断在 rules.diagnose 里，这里不重复报
+  assert.equal(diagnostics.some(d => /未生效/.test(d.message)), false);
+});
+
+test('instructions: 有改写但组装里没有该段 → 不改动 + 诊断「未生效」', () => {
+  const input = REWRITE_FIXTURE().filter(s => s.name !== 'mcp:context7');
+  const { sections, rewritten, diagnostics } = filterSections(
+    input, [], new Map([['context7', '你的新说明']]),
+  );
+  assert.ok(!sections.some(s => s.name === 'mcp:context7'), '不插入段');
+  assert.deepEqual(rewritten, []);
+  assert.ok(diagnostics.some(d => /context7/.test(d.target) && /未生效/.test(d.message)));
+});
+
+test('instructions: 不停用、无改写时原文仍被捕获（防早退回归）', () => {
+  const input = REWRITE_FIXTURE();
+  const { sections, originals, diagnostics } = filterSections(input, [], new Map());
+  assert.deepEqual(sections, input);
+  assert.equal(originals.get('tinyfish'), '### MCP server: tinyfish\n\nTF 说明');
+  assert.equal(originals.size, 2);
+  assert.deepEqual(diagnostics, []);
+});
+
+test('instructions: 服务器没有说明（text 为 ""）时原文记为 ""', () => {
+  const input = [{ name: 'mcp:plain', text: '' }];
+  const { originals, rewritten } = filterSections(input, [], new Map([['plain', '补一段说明']]));
+  assert.equal(originals.get('plain'), '', '空串 = 确认没有说明');
+  assert.ok(originals.has('plain'), '仍要有这个键（与「没捕获」区分）');
+  assert.deepEqual(rewritten, ['plain']);
+});
+
+test('instructions: 改写正文含 {{变量}} 不抛错（interpolate:false 生效）', () => {
+  const input = [{ name: 'mcp:x', text: '原说明' }];
+  assert.doesNotThrow(() => filterSections(input, [], new Map([['x', '请用 {{now}} 作为时间']])));
+});
+
+test('instructions: 改写路径抛错 → fail-open 原样放行 + 诊断', async () => {
+  const { ctx, captured } = makeEventCtx();
+  const state = { installed: false, removed: [], originals: new Map(), diagnostics: [] };
+  installInstructionsFilter(ctx, {
+    disabledServers: new Set(),
+    serverRewrites: new Map([['rea', '新说明']]),
+  }, state, noopLog);
+  const evil = new Proxy([], {
+    get(t, p) {
+      if (p === Symbol.iterator) throw new Error('boom');
+      return t[p];
+    },
+  });
+  const upstream = { sections: evil };
+  const out = await captured.handler(upstream, {}, async () => upstream);
+  assert.equal(out, upstream);
+  assert.ok(state.diagnostics.some(d => /原样放行/.test(d.message)));
+});
+
+test('instructions: 原文按服务器合并、只增不删', async () => {
+  const { ctx, captured } = makeEventCtx();
+  const state = { installed: false, removed: [], originals: new Map(), diagnostics: [] };
+  installInstructionsFilter(ctx, {
+    disabledServers: new Set(),
+    serverRewrites: new Map(),
+  }, state, noopLog);
+
+  const first = { sections: [{ name: 'mcp:a', text: 'A 说明' }, { name: 'mcp:b', text: 'B 说明' }] };
+  await captured.handler(first, {}, async () => first);
+  assert.equal(state.originals.get('a'), 'A 说明');
+
+  // 第二次组装里只有 b（比如 a 的服务器暂时没连上）：a 的原文不能被抹掉
+  const second = { sections: [{ name: 'mcp:b', text: 'B 说明' }] };
+  await captured.handler(second, {}, async () => second);
+  assert.equal(state.originals.get('a'), 'A 说明');
+  assert.equal(state.originals.get('b'), 'B 说明');
+});

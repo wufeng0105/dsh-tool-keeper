@@ -51,7 +51,7 @@ export function registerTool(ctx, options) {
     description: [
       '管理「哪些工具进入模型上下文」。可查看全部工具及占用、按服务器/单个工具开关、改写工具说明。',
       'action=status 看概况与诊断；action=list 列全部工具（按来源分组，含字符数）；',
-      'action=server 打开/关闭整台 MCP 服务器（enabled=true/false，关闭时说明页一并隐藏、打开时一并恢复）；',
+      'action=server 打开/关闭整台 MCP 服务器（enabled=true/false），或改写它的说明页（text，空串=恢复原样）；关闭时工具与说明页一并隐藏；',
       'action=tool 开关单个工具（state=drop/keep）；',
       'action=rewrite 改写工具或参数说明（省略 text=清除该工具的改写）；',
       'action=reset 恢复出厂基线。',
@@ -69,8 +69,7 @@ export function registerTool(ctx, options) {
         server: { type: 'string', description: 'MCP 服务器名（action=server 时必填）。' },
         enabled: {
           type: 'boolean',
-          description: 'action=server：true 打开整台、false 关闭整台（说明页随开关一并隐藏/恢复）。只动"上不上架"这一层，不碰单个工具开关。',
-        },
+          description: 'action=server：true 打开整台、false 关闭整台（说明页随开关一并隐藏/恢复）。只动"上不上架"这一层，不碰单个工具开关。',        },
         name: { type: 'string', description: '完整工具名，如 mcp__tinyfish__search 或 read（action=tool/rewrite 时必填）。' },
         state: {
           type: 'string',
@@ -83,7 +82,7 @@ export function registerTool(ctx, options) {
           description: 'action=rewrite：改写工具说明还是某个参数的说明。',
         },
         param: { type: 'string', description: 'action=rewrite 且 target=param 时的参数名。' },
-        text: { type: 'string', description: 'action=rewrite：新的说明文本。省略则清除该改写。' },
+        text: { type: 'string', description: 'action=rewrite：该工具的新说明；action=server：该服务器说明页的整段改写（会替换掉「### MCP server: 名字」那行标题，空串=恢复原样）。省略则清除。' },
 
       },
       required: ['action'],
@@ -108,7 +107,13 @@ export function registerTool(ctx, options) {
           toolCount: catalog.size(),
           diagnostics: s.diagnostics,
           problems: s.problems,
-          instructions: s.instructions ?? { installed: false, removed: [] },
+          // 只带事实摘要：原文（texts）只给设置页。单台上限 32KB，
+          // 一句 status 就把 N×32KB 灌进上下文，与插件目的相反。
+          instructions: {
+            installed: s.instructions?.installed === true,
+            removed: s.instructions?.removed ?? [],
+            rewritten: s.instructions?.rewritten ?? [],
+          },
         };
       }
 
@@ -159,22 +164,36 @@ export function registerTool(ctx, options) {
           error.code = 'EINVALID';
           throw error;
         }
-        if (typeof args.enabled !== 'boolean') {
+        const hasEnabled = typeof args.enabled === 'boolean';
+        const hasText = typeof args.text === 'string';
+        if (!hasEnabled && !hasText) {
           const error = new Error(
-            'action=server 需要 enabled: true/false；只关某个工具请用 action=tool',
+            'action=server 需要 enabled（开关整台）或 text（改写该服务器的说明页）之一；只关某个工具请用 action=tool',
           );
           error.code = 'EINVALID';
           throw error;
         }
-        // 只动「上不上架」这一层；单个工具的选择在 tools 里，这里不碰
+        // 一次可写两个字段，互不覆盖：条目从磁盘现状起步
         const entry = { ...(base.servers[server] || {}) };
-        if (args.enabled) delete entry.enabled; else entry.enabled = false;
-        if (entry.enabled === undefined) delete base.servers[server];
+        if (hasEnabled) {
+          if (args.enabled) delete entry.enabled; else entry.enabled = false;
+        }
+        if (hasText) {
+          if (args.text === '') delete entry.rewrite; else entry.rewrite = args.text;
+        }
+        // 只有三个字段都空才删整条——否则「打开服务器」会顺手把改写删掉
+        if (entry.enabled === undefined && entry.rewrite === undefined) delete base.servers[server];
         else base.servers[server] = entry;
         writeConfig(configPath, base);
+        const done = [];
+        if (hasEnabled) done.push(args.enabled ? '已打开整台服务器' : '已关闭整台服务器');
+        if (hasText) done.push(args.text === '' ? '已清除说明页改写' : '已改写说明页');
         return {
-          ok: true, server, enabled: args.enabled,
-          note: (args.enabled ? '已打开' : '已关闭') + '整台服务器（单个工具开关原样保留）；重启后生效',
+          ok: true,
+          server,
+          ...(hasEnabled ? { enabled: args.enabled } : {}),
+          ...(hasText ? { rewrite: args.text } : {}),
+          note: done.join('，') + '；重启后生效',
         };
       }
 

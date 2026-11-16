@@ -67,13 +67,13 @@ preflight 会标记 `slots.inject` 回调里出现 `slots.register` 的写法。
 
 ---
 
-## 七、完整提示词预设下说明页过滤不生效，且检测不到
+## 七、完整提示词预设下说明页过滤与改写都不生效，且检测不到
 
-会话选用「完整提示词」类预设（dsh-persona `config.complete:true`）时，宿主在 waterfall **之后**无条件恢复 complete 段（`dsh-system-prompt/src/index.ts:693`），本插件对 sections 的过滤被覆盖。
+会话选用「完整提示词」类预设（dsh-persona `config.complete:true`）时，宿主在 waterfall **之后**无条件恢复 complete 段（`dsh-system-prompt/src/index.ts:693`），本插件对 sections 的过滤与改写被覆盖。
 
 更麻烦的是**检测不到**：waterfall 里的段只有 name/text/interpolate，complete 标志被剥掉（同文件 667-672）；而 `deployment:persona-prefix` 段构造器恒注册（463-468），scoped 同名段又只在 complete 时出现——任何「数 persona-prefix 段」的启发式都会误报。
 
-**当前行为**：不造假检测。组装里未见停用服务器的说明段时，诊断如实报「未连接，或该会话使用完整提示词预设——后者说明页过滤不生效」；界面组头只在运行时事实（removed）成立时才说「说明页已一并隐藏」。工具半边不受此边界影响。
+**当前行为**：不造假检测。组装里未见停用服务器的说明段时，诊断如实报「未连接，或该会话使用完整提示词预设——后者说明页过滤不生效」；配了改写却没见到段时，诊断报「改写本次未生效」。界面组头只在运行时事实（removed）成立时才说「说明页已一并隐藏」，面板只在 rewritten 含该服务器时才说「上次组装已生效」。工具半边不受此边界影响。
 
 ---
 

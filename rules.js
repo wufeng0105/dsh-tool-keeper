@@ -82,6 +82,7 @@ export function normalizeConfig(raw) {
   const problems = [];
   const empty = {
     disabledServers: new Set(),
+    serverRewrites: new Map(), // server -> 说明页改写文本（空 = 原样）
     toolOverrides: new Map(), // full name -> 'drop' | 'keep'
     rewrites: new Map(),     // full name -> { description?, properties: Map }
   };
@@ -112,6 +113,15 @@ export function normalizeConfig(raw) {
           continue;
         }
         if (value.enabled === false) empty.disabledServers.add(server);
+        if (value.rewrite !== undefined) {
+          if (typeof value.rewrite !== 'string') {
+            problems.push(`servers.${server}.rewrite 必须是字符串，实际是 ` + describe(value.rewrite));
+          } else if (value.rewrite.trim() !== '') {
+            // 原样保存（不 trim）：正文里的换行是用户意图，渲染按 '\n\n' 拼接
+            empty.serverRewrites.set(server, value.rewrite);
+          }
+          // 空串/纯空白 = 未配置：静默忽略（调用方负责不把它落盘）
+        }
         if (value.keep !== undefined) {
           // 白名单已移除：必须报出来，不能静默忽略——静默忽略等于把工具全放出来
           problems.push(
@@ -461,7 +471,19 @@ export function diagnose(rules, seenNames) {
     }
   }
 
-  // 2) 单工具规则：按服务器聚合。一台可能有几百条 drop，
+  // 2) 停用 + 说明页改写：两者同条目，停用优先，改写不会生效。
+  //    这是纯配置事实，不必等运行时组装就能说清。
+  for (const server of (rules.serverRewrites ?? new Map()).keys()) {
+    if (rules.disabledServers.has(server)) {
+      out.push({
+        kind: 'warning',
+        target: 'servers.' + server + '.rewrite',
+        message: `服务器 ${server} 已停用，说明页改写不会生效（启用后生效）`,
+      });
+    }
+  }
+
+  // 3) 单工具规则：按服务器聚合。一台可能有几百条 drop，
   //    逐个报会刷屏；同名服务器下匹配不到的统一报一条。
   const overridesByServer = new Map();
   for (const name of rules.toolOverrides.keys()) {
@@ -488,7 +510,7 @@ export function diagnose(rules, seenNames) {
     }
   }
 
-  // 3) 改写：同样按服务器聚合"不存在"的情况；存在的工具再查两件会静默失效的事
+  // 4) 改写：同样按服务器聚合"不存在"的情况；存在的工具再查两件会静默失效的事
   const rewritesByServer = new Map();
   for (const name of rules.rewrites.keys()) {
     const s = serverOf(name);

@@ -607,7 +607,7 @@ test('api: state 快照缺 instructions 时容缺省', async () => {
   const { captured, dir, dispose } = setup();
   const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
   assert.equal(r.status, 200);
-  assert.deepEqual(r.json.instructions, { installed: false, removed: [] });
+  assert.deepEqual(r.json.instructions, { installed: false, removed: [], rewritten: [], texts: {} });
   dispose();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -624,6 +624,58 @@ test('api: state 透传 instructions 事实', async () => {
   const dispose = mountApi(ctx, deps);
   const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
   assert.deepEqual(r.json.instructions, { installed: true, removed: ['rea'] });
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ─────────────────────────────────────────────
+// 0.6.0：服务器说明页改写（state 完整条目 / tool 动作 / 界面纯函数）
+// ─────────────────────────────────────────────
+test('api: state.rules.servers 返回完整条目（只配 rewrite 的也要在）', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tool-keeper-api-'));
+  const configPath = join(dir, 'tool-keeper.json');
+  writeFileSync(configPath, JSON.stringify({
+    servers: { context7: { rewrite: '新说明' }, rea: { enabled: false, rewrite: '停用但配了改写' } },
+    tools: {}, rewrite: {},
+  }, null, 2));
+  const { ctx, captured } = makeCtx();
+  const dispose = mountApi(ctx, makeDeps(configPath));
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  assert.deepEqual(r.json.rules.servers.context7, { rewrite: '新说明' });
+  assert.deepEqual(r.json.rules.servers.rea, { enabled: false, rewrite: '停用但配了改写' });
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: 整块写回 servers 时 rewrite 不丢', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tool-keeper-api-'));
+  const configPath = join(dir, 'tool-keeper.json');
+  writeFileSync(configPath, JSON.stringify({ servers: { context7: { rewrite: '新说明' } }, tools: {}, rewrite: {} }, null, 2));
+  const { ctx, captured } = makeCtx();
+  const dispose = mountApi(ctx, makeDeps(configPath));
+  // 模拟界面：把 state 里的 servers 原样写回（这是服务器的整块替换路径）
+  const st = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'set', servers: st.json.rules.servers });
+  assert.equal(r.status, 200);
+  const saved = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.deepEqual(saved.servers.context7, { rewrite: '新说明' });
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: state 透传 texts 与 rewritten', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tool-keeper-api-'));
+  const configPath = join(dir, 'tool-keeper.json');
+  const { ctx, captured } = makeCtx();
+  const deps = makeDeps(configPath);
+  deps.snapshot = () => ({
+    patched: true, configPath, problems: [], diagnostics: [],
+    instructions: { installed: true, removed: ['rea'], rewritten: ['context7'], texts: { context7: '原文' } },
+  });
+  const dispose = mountApi(ctx, deps);
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  assert.deepEqual(r.json.instructions.rewritten, ['context7']);
+  assert.deepEqual(r.json.instructions.texts, { context7: '原文' });
   dispose();
   rmSync(dir, { recursive: true, force: true });
 });

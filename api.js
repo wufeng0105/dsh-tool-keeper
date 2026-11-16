@@ -136,9 +136,9 @@ export function mountApi(ctx, deps) {
             stale,
             problems: [...problems, ...s.problems],
             diagnostics: s.diagnostics,
-            // 说明页半边的事实（最近一次组装；未安装时 installed:false）。
-            // 桩/旧快照可能没有这个字段，容缺省。
-            instructions: s.instructions ?? { installed: false, removed: [] },
+            // 说明页半边的运行时事实（最近一次组装；未安装时 installed:false）。
+            // texts 只给设置页用（编辑器要显示原文）；model 侧 status 会剥掉它。
+            instructions: s.instructions ?? { installed: false, removed: [], rewritten: [], texts: {} },
             groups: groups.map(([group, entries]) => ({
               group,
               roles: entries.map(e => {
@@ -158,11 +158,16 @@ export function mountApi(ctx, deps) {
               }),
             })),
             rules: {
-              // 返回完整的服务器条目（当前只有 enabled 一个字段）。
-              // 界面按它整块写回；少回一个字段就会把别的服务器配置抹掉。
-              servers: Object.fromEntries(
-                [...rules.disabledServers].map(srv => [srv, { enabled: false }]),
-              ),
+              // 返回完整的服务器条目（enabled / rewrite 都在），界面按它整块写回。
+              // 少回一个字段，界面写回时就会把那类配置抹掉——0.5.0 曾因此丢掉 rewrite。
+              servers: (() => {
+                const servers = {};
+                for (const name of rules.disabledServers) servers[name] = { enabled: false };
+                for (const [name, text] of (rules.serverRewrites ?? new Map())) {
+                  servers[name] = { ...(servers[name] || {}), rewrite: text };
+                }
+                return servers;
+              })(),
               disabledServers: [...rules.disabledServers],
               tools: Object.fromEntries(rules.toolOverrides),
               rewrites: Object.fromEntries(
