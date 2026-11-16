@@ -1,6 +1,6 @@
 {
   "name": "@wufeng0105/dsh-tool-keeper",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "type": "module",
   "description": "AI re-reads every tool's manual on every reply. Hide the ones you never use, and rewrite the rest.",
   "license": "MIT",

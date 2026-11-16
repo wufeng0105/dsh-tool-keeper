@@ -55,15 +55,20 @@
 
 ---
 
-## 七、死代码与过期注释
+## 七、已知的取舍与遗留
 
 | 项 | 位置 | 状态 |
 | --- | --- | --- |
 | `applied` 数组 | `rules.js` `rewriteParameterDescriptions` | 只 push 不读。留着无害，删了得改两处返回点；暂留 |
 | `renameSync` 静默降级 | `config.js` `writeConfig` | Windows 目标被占用时改为直接写，可能写坏配置且无日志 |
 | 空白「不落盘」契约无强制 | `rules.js` / `api.js` | 注释称调用方负责，实测 `{rewrite:" "}` 仍能落盘成死键 |
+| 遗留空串改写会让写入口 400 | `rules.js` 的空串诊断 + `config.js` 的写前校验 | 升级摩擦：磁盘上留着 `rewrite.<工具>=""` 时，改任何工具都会 400，而界面上看不到那个键（空串条目已被 `normalizeConfig` 丢弃）。逃生口：`op=reset`，或 `op=set {rewrite:{}}` |
+| `instructions` 对 `complete` 段无条件报「已生效」 | `instructions.js` | 代码从不读 `section.complete`，而宿主契约写明该段会被还原。当前实例四段确实生效，属**未经验证的断言**，标 `UNVERIFIABLE` |
+| 导出/导入静默丢数据 | `api.js` | 导出读坏时用空基线顶替、无标记；导入只搬 `servers/tools/rewrite`，旧字段静默删除后返回 `ok:true` |
+| 补丁可叠两层、`restore` 非栈 | `index.js` | 见第一条 |
+| `servers.<名>.keep` 被忽略后原隐藏工具重现 | `rules.js` | 只有一句「请改写成 tools.<完整名>」，没说明「因此这批工具现在全部可见」 |
 
-已清理：`snapshot().groups`、`provideStatus`（**保留**——它是对外服务契约，见下）、`source`（**保留**——API 契约的一部分）、`num()`、`entry.leaf`、`entry.parameters`、`catalog.names()` 的注释矛盾、「三条边界」空壳标题、过期白名单注释、256KB 文案。
+已清理：`snapshot().groups`、`num()`、`entry.leaf`、`entry.parameters`、`catalog.names()` 的注释矛盾、「三条边界」空壳标题、过期白名单注释（三处）、256KB 文案、`ui` 里的死局部变量 `hidden`。
 
 **`provideStatus` 与 `source` 为什么保留**：首轮清理时我把它们当死代码删了，240 条测试立刻红了 18 条。复查发现——`ctx.provide('tool_keeper')` 是插件的对外服务契约（本仓库无消费者不等于别处没有），`source` 是 `state` 响应的一部分、被界面测试依赖。**「本仓库没人用」不等于「契约允许删」。** 这属于我判断失误，记录在此以免重犯。
 
