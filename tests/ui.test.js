@@ -170,31 +170,36 @@ test('ui: 分组 = 卡片包住标题与工具（标题行在卡内，卡间无�
 test('ui: 分组标题行是整卡可点的按钮（计数也在点击区内）', () => {
   const { mod } = loadUi();
   const css = mod.__testing.CSS;
-  // 头部容器 + 折叠按钮 + 独立总开关的三段结构
+  // 头部容器 + 折叠按钮 + 独立总开关 + 独立编辑按钮：右侧两个格子固定宽度，
+  // 标题占剩余宽度。用网格而不是 flex：flex 下第三个控件会撑出卡片右缘。
   const headerRule = css.match(/\.tw-groupHeader\{([^}]*)\}/);
-  assert.ok(headerRule !== null, '要有头部容器（放折叠按钮与总开关）');
-  assert.ok(/display:flex/.test(headerRule[1]), '头部容器用 flex 横排');
+  assert.ok(headerRule !== null, '要有头部容器（放折叠按钮、总开关与编辑）');
+  assert.ok(/display:grid/.test(headerRule[1]), '头部容器用网格横排');
+  assert.ok(/grid-template-columns:minmax\(0,1fr\) auto auto/.test(headerRule[1]),
+    '三列：标题占剩余宽度，开关与编辑各占一列');
   // 旧的 heading 容器不再存在
   assert.ok(!css.includes('.tw-groupHeading'), '不应再有独立的 heading 容器');
-  // 折叠按钮占满剩余宽度（总开关独立在最右，不占折叠热区）
   const toggleRule = css.match(/\.tw-groupToggle\{([^}]*)\}/);
   assert.ok(toggleRule !== null, '要有标题按钮规则');
-  assert.ok(/flex:1 1 0/.test(toggleRule[1]), '折叠按钮要占满剩余宽度');
+  assert.ok(/min-width:0/.test(toggleRule[1]), '标题区必须可收缩，否则会溢出卡片');
   assert.ok(/justify-content:space-between/.test(toggleRule[1]), '标题与计数两端分布');
   assert.ok(/cursor:pointer/.test(toggleRule[1]), '标题按钮要可点');
-  // 总开关只出现在 MCP 组：内置工具组（core）不渲染头部开关
+  // 总开关与编辑只出现在 MCP 组：内置工具组（core）不渲染它们
   const html = renderView(makeData());
-  // 每段 tw-groupHeader 内是否含 role="switch"：2 个组 → 恰 1 段有（tinyfish）
   const headerChunks = html.split('tw-groupHeader').slice(1);
   assert.equal(headerChunks.length, 2, '两个分组各有一个头部容器');
-  const withSwitch = headerChunks.filter(c => c.includes('role="switch"')).length;
-  assert.equal(withSwitch, 1, '恰好 MCP 组的头部有总开关');
-  // 总开关独立于折叠按钮：不在 tw-groupToggle 内部
+  assert.equal(headerChunks.filter(c => c.includes('role="switch"')).length, 1, '恰好 MCP 组的头部有总开关');
+  assert.equal(headerChunks.filter(c => c.includes('tw-editServer')).length, 1, '恰好 MCP 组的头部有编辑按钮');
+  // 两个控件都独立于折叠按钮：不在 tw-groupToggle 内部
   for (const chunk of headerChunks) {
     const toggleEnd = chunk.indexOf('</button>');
     const switchPos = chunk.indexOf('role="switch"');
     if (switchPos >= 0) {
       assert.ok(switchPos > toggleEnd, '总开关必须在折叠按钮之外，不嵌在其内部');
+    }
+    const editPos = chunk.indexOf('tw-editServer');
+    if (editPos >= 0) {
+      assert.ok(editPos > toggleEnd, '编辑按钮必须在折叠按钮之外，不嵌在其内部');
     }
   }
 
@@ -840,7 +845,7 @@ test('ui: 编辑按钮在开关之后、且在折叠按钮之外', () => {
   assert.ok(sw >= 0 && edit > sw, '编辑按钮必须在开关之后（手往右偏落在无害处）');
 });
 
-test('ui: 点编辑出现面板，左原文右编辑框', () => {
+test('ui: 点编辑出现面板，左原文右编辑框（没有取消按钮）', () => {
   const data = ONLY_MCP();
   data.instructions = { installed: true, removed: [], rewritten: [], texts: { tinyfish: '### MCP server: tinyfish\n\n原文' } };
   const html = renderView(data, { editingServer: 'tinyfish', serverDraft: '' });
@@ -848,7 +853,7 @@ test('ui: 点编辑出现面板，左原文右编辑框', () => {
   assert.ok(html.includes('### MCP server: tinyfish'), '左边要能看到原文（含标题行）');
   assert.ok(/<textarea[^>]*tw-editor/.test(html), '右边是编辑框');
   assert.ok(html.includes('保存说明'));
-  assert.ok(html.includes('取消'));
+  assert.ok(!html.includes('>取消<'), '取消按钮已去掉：再点「编辑」或用 Esc 收起');
   assert.ok(!html.includes('上次组装已生效'), '没配改写时不给「已生效」的假话');
 });
 
@@ -856,13 +861,13 @@ test('ui: 原文缺失与空串的提示必须不同（不冒充）', () => {
   const missing = ONLY_MCP();
   missing.instructions = { installed: true, removed: [], rewritten: [], texts: {} };
   const htmlMissing = renderView(missing, { editingServer: 'tinyfish', serverDraft: '' });
-  assert.ok(htmlMissing.includes('暂时读不到原始说明'));
+  assert.ok(htmlMissing.includes('还没读到原始说明'));
 
   const empty = ONLY_MCP();
   empty.instructions = { installed: true, removed: [], rewritten: [], texts: { tinyfish: '' } };
   const htmlEmpty = renderView(empty, { editingServer: 'tinyfish', serverDraft: '' });
   assert.ok(htmlEmpty.includes('该服务器没有提供说明'));
-  assert.ok(!htmlEmpty.includes('暂时读不到原始说明'), '空串不是「读不到」');
+  assert.ok(!htmlEmpty.includes('还没读到原始说明'), '空串不是「读不到」');
 });
 
 test('ui: 停用时面板提示「启用后生效」，改写生效时提示「上次组装已生效」', () => {

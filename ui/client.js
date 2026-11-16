@@ -68,15 +68,17 @@ window.__ModuleLoader__.load({
       /* 标题行高必须等于工具行实际高度（34px 图标块 + 12px 行内边距 = 46px）：
          折叠卡与展开行在同一竖列里堆叠，一高一矮节奏就断了。 */
       /* 头部容器：折叠按钮占满剩余宽度，总开关独立在最右。行高仍与工具行一致。 */
-      '.tw-groupHeader{display:flex;align-items:stretch;gap:4px}',
-      '.tw-groupToggle{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:46px;padding:0 10px;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;user-select:none;transition:background 150ms ease}',
+      /* 头部用网格而不是 flex：右侧永远只有「开关 + 编辑」两个固定宽度的格子，
+         标题与状态占剩余宽度并自行省略。flex 下第三个控件会撑出卡片右缘（历史 bug）。 */
+      '.tw-groupHeader{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:0;padding:0 10px 0 0}',
+      '.tw-groupToggle{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;min-height:46px;padding:0 0 0 10px;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;user-select:none;transition:background 150ms ease}',
       '.tw-groupToggle:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}',
       '.tw-groupToggle:disabled{cursor:default}',
       '.tw-groupLead{display:flex;align-items:center;gap:8px;min-width:0}',
       '.tw-groupIcon{flex:none;width:16px;height:16px;stroke:var(--dsw-alias-label-secondary);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}',
       '.tw-groupTitle{min-width:0;margin:0;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.tw-groupMeta{display:flex;align-items:center;gap:8px;flex:none}',
-      '.tw-count{flex:none;color:var(--dsw-alias-label-tertiary);font-size:12px;font-variant-numeric:tabular-nums}',
+      '.tw-groupMeta{display:flex;align-items:center;gap:8px;min-width:0;flex:none}',
+      '.tw-count{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:12px;font-variant-numeric:tabular-nums}',
       '.tw-chevron{flex:none;transition:transform 180ms cubic-bezier(.2,.7,.3,1)}',
       '.tw-chevron.is-open{transform:rotate(0deg)}',
       '.tw-chevron:not(.is-open){transform:rotate(-90deg)}',
@@ -105,8 +107,7 @@ window.__ModuleLoader__.load({
       '.tw-meta{margin-top:1px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-variant-numeric:tabular-nums}',
 
       /* 开关 */
-      '.tw-switch{flex:none;display:inline-flex;align-items:center;background:none;border:none;padding:0;cursor:pointer}',
-      '.tw-groupHeader .tw-switch{margin:0 10px 0 0;align-self:center}',
+      '.tw-switch{flex:none;display:inline-flex;align-items:center;background:none;border:none;padding:0;margin-left:10px;cursor:pointer;justify-self:end}',
       '.tw-switch:disabled{cursor:default;opacity:.5}',
       '.tw-track{width:38px;height:20px;border-radius:10px;background:var(--dsw-alias-border-l2);position:relative;transition:background 180ms cubic-bezier(.2,.7,.3,1)}',
       '.tw-switch[aria-checked=true] .tw-track{background:var(--dsw-alias-state-success-primary)}',
@@ -125,12 +126,14 @@ window.__ModuleLoader__.load({
       '.tw-editor{resize:none;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-base)}',
       '.tw-editor::placeholder{color:var(--dsw-alias-label-tertiary)}',
       '.tw-editor:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}',
-      '.tw-detailActions{display:flex;align-items:center;gap:10px}',
+      '.tw-detailActions{display:flex;align-items:center;justify-content:space-between;gap:10px}',
       '.tw-dirty{font-size:11px;line-height:13px;color:var(--dsw-alias-state-warn-primary)}',
       '.tw-detailHint{font-size:11px;line-height:15px;color:var(--dsw-alias-label-tertiary)}',
-      '.tw-editServer{flex:none;margin-left:12px;height:26px;padding:0 10px;font-size:12px;line-height:24px;border-radius:6px;border:.5px solid var(--dsw-alias-border-l3);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;font-family:inherit}',
-      '.tw-editServer:hover{background:var(--dsw-alias-bg-l2);color:var(--dsw-alias-label-primary)}',
-      '.tw-editServer:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}',
+      /* 编辑按钮：网格里的固定格，自身右对齐；outline 用内偏移，贴在卡片边缘也不会被裁 */
+      '.tw-editServer{justify-self:end;height:26px;margin:0 0 0 10px;padding:0 10px;font:inherit;font-size:12px;line-height:24px;border-radius:6px;border:.5px solid var(--dsw-alias-border-l3);background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}',
+      '.tw-editServer:hover:not(:disabled){background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}',
+      '.tw-editServer:disabled{cursor:default;opacity:.5}',
+      '.tw-editServer:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}',
       '.tw-editServer[aria-expanded="true"]{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}',
 
       /* ── 按钮：与搜索框同高 34px，内容垂直居中 ── */
@@ -344,20 +347,24 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 服务器说明页的编辑面板：左原文（含「### MCP server: 名字」标题行）、右改写。
+     * 服务器说明页的编辑面板：左原文、右改写。
      * 三种原文状态必须可区分：有文本 / 空串（服务器没提供说明）/ 键缺失（还没组装过）。
+     * 没有「取消」：再点一次「编辑」就收起，Esc 也可以——少一个按钮少一处要对齐的东西。
      */
     function ServerDetail(props) {
       var original = props.originalText;
       var originalText;
-      if (original === undefined) originalText = '暂时读不到原始说明（发一次消息后点刷新）';
+      if (original === undefined) originalText = '还没读到原始说明（发一次消息后点刷新）';
       else if (original === '') originalText = '该服务器没有提供说明（你写的内容会作为它的说明出现）';
       else originalText = original;
       // 运行时事实：改写配了，上次组装到底替没替换
       var effectHint = props.configured === true
         ? (props.applied === true ? '上次组装已生效' : '尚未生效（重启后生效）')
         : null;
-      return h('div', { className: 'tw-detail' },
+      return h('div', {
+        className: 'tw-detail',
+        onKeyDown: function (e) { if (e.key === 'Escape') props.onCancel(); },
+      },
         props.disabled === true
           ? h('p', { className: 'tw-detailHint' }, '该服务器已停用，改写会在启用后生效')
           : null,
@@ -372,21 +379,23 @@ window.__ModuleLoader__.load({
               className: 'tw-box tw-editor',
               spellCheck: false,
               'aria-label': '改写服务器说明 ' + props.server,
-              placeholder: '整段替换；含「### MCP server: 名字」那行标题，想保留就自己写回去',
+              placeholder: '整段替换。标题行 `### MCP server: 名字` 也在正文里，想保留就自己写回去。',
               value: props.draft,
               onChange: function (e) { props.onDraft(e.target.value); },
             }),
           ),
         ),
         h('div', { className: 'tw-detailActions' },
+          h('div', { className: 'tw-detailHint' },
+            props.dirty === true ? h('span', { className: 'tw-dirty' }, '有未保存修改') : null,
+            props.dirty === true && effectHint ? ' · ' : null,
+            effectHint,
+          ),
           h('button', {
             className: 'tw-btn',
             disabled: props.busy || props.dirty !== true,
             onClick: props.onSave,
           }, '保存说明'),
-          h('button', { className: 'tw-btn', disabled: props.busy, onClick: props.onCancel }, '取消'),
-          props.dirty === true ? h('span', { className: 'tw-dirty' }, '有未保存修改') : null,
-          effectHint ? h('span', { className: 'tw-detailHint' }, effectHint) : null,
         ),
       );
     }
