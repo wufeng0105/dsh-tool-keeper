@@ -105,15 +105,20 @@ AI 会调插件自带的 `tool_keeper` 工具：
 
 ## 六、规则怎么生效
 
-### 三个入口，同一份配置
+### 三个顶层字段，同一份配置
 
-| 入口 | 写什么 |
-|---|---|
-| 服务器开关（每台 MCP） | `servers.<名>.enabled` |
-| 服务器说明页改写（MCP 卡片最右「编辑」） | `servers.<名>.rewrite` |
-| 单工具开关（每行右边） | `tools.<完整名>` = `drop` / `keep` |
+配置只有 `servers` / `tools` / `rewrite` 三个顶层字段。界面上的每处操作、`tool_keeper` 的每个写动作，最终都落在这三个里：
+
+| 字段 | 写什么 | 谁能改它 |
+|---|---|---|
+| `servers.<名>.enabled` | 整台服务器关或开 | 服务器开关 / `action=server` |
+| `servers.<名>.rewrite` | 这台服务器的**说明页**正文 | 「编辑」/ `action=server` 的 `text` |
+| `tools.<完整名>` | `drop` 或 `keep`，单个工具 | 行开关 / `action=tool` |
+| `rewrite.<完整名>` | 这个工具的**说明**、任意参数的说明 | 点工具名展开 / `action=rewrite` |
 
 `servers.<名>` 的两个字段互不影响：`enabled: false` 让工具与说明页一起消失；`rewrite` 只换说明页，不碰工具。
+
+两处「改写」别混：`servers.<名>.rewrite` 换的是**服务器那一整页**（含 `### MCP server: <名>` 标题行）；`rewrite.<工具>` 换的是**单个工具的说明**。
 
 **插件级启停不在这里**：那归 DSH 的插件页。在插件页停用插件 = 本插件不执行，工具全部原样。
 
@@ -221,7 +226,7 @@ present  todo_write  ask_user_question  tool_keeper  skill
 
 ```bash
 npm install    # 只有测试需要（react / react-dom 用于离线渲染页面）
-npm test       # 239 条测试
+npm test       # 条数与分组见 docs/TESTING.md
 ```
 
 宿主半拦截 DSH 的工具注册入口，浏览器半是设置页，两者通过本地 HTTP 接口通信；说明页半边挂在宿主的系统提示词组装事件上。详见 [AGENTS.md](./AGENTS.md) 的模块表。

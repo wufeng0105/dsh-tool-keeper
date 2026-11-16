@@ -15,6 +15,19 @@
 2. 查宿主事实用 `cordis_inspect_query`（权威源：Service / Event / Config / Tools / Slots），
    不要凭印象，也不要只信上游文档——文档可能落后于实际运行版本。
 3. 装配怎么写，看同宿主已上架的同类插件源码（`dsh-enhance`、`dsh-archive-manager`）。
+4. **改代码前先查图谱**。本仓有 `.codegraph/` 索引，`codegraph_explore` 传本仓路径（`projectPath` 必填）。
+   一次调用就给出符号源码、调用方和波及面，还标出相关测试文件。查这三个问题它最省：
+   改这里会牵连谁、这个符号在哪、这是怎么实现的。**返回的源码视为已读过，不要再 `read` 同一文件。**
+
+### 为什么这条要放在开工前
+
+本项目七个模块互相引用（`api.js` → `config.js` → `baseline.js`，`tool.js` → `rules.js`），
+`rules.js` 被 `api.js` / `config.js` / `index.js` / `tool.js` 四处 import。靠 `grep` 找一个符号会在六七个文件里来回，还容易漏掉某一个调用方；
+漏掉的调用方就是「测试全绿但功能坏了」的来源。
+图谱直接给出调用方清单，这是它能替代 `grep` 加逐个 `read` 的唯一理由。
+
+索引在 `.codegraph/`（已纳入 `.gitignore`，只在本机）。索引过期时结果可能是旧的，
+**改动跨多个模块时用图谱定位、用 `grep` 复核**，两者不互斥。
 
 ---
 
@@ -50,7 +63,7 @@
 
 ## 交付前
 
-1. `npm test` —— 236 条，全绿
+1. `npm test` —— 全绿。条数与分组见 [TESTING](./docs/TESTING.md)，本文不复述（数字会漂，真相源只有一个）
 2. `node <plugin-kit包>/skills/plugin-kit/scripts/preflight.mjs <项目根>` —— 0 FAIL
 3. **改断言就必须做变异测试**：故意改坏实现，确认变红，再还原。
 4. **升级 DSH 后跑体检三件套**（缺一不可）：

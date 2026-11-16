@@ -2,6 +2,8 @@
 
 **缺陷的唯一真相源。** 修好一条就删一条，不要在别处另开一份。按影响排序。
 
+每条回答三件事：什么情况下会出错、错在哪、现在为什么不动。
+
 ---
 
 ## 一、双重加载时还原不干净
@@ -14,19 +16,19 @@
 
 ---
 
-## 二、参数改写没有独立开关
+## 二、完整提示词预设下说明页过滤与改写都不生效，且检测不到
 
-只要配了 `rewrite.<工具>.properties` 就生效。一个手滑写进去的参数改写会立刻起作用，而它改的是模型理解参数含义的依据。
+会话选用「完整提示词」类预设（dsh-persona `config.complete:true`）时，宿主在 waterfall **之后**无条件恢复 complete 段（`dsh-system-prompt/src/index.ts:693`），本插件对 sections 的过滤与改写被覆盖。
+
+更麻烦的是**检测不到**：waterfall 里的段只有 name/text/interpolate，complete 标志被剥掉（同文件 667-672）；而 `deployment:persona-prefix` 段构造器恒注册（463-468），scoped 同名段又只在 complete 时出现——任何「数 persona-prefix 段」的启发式都会误报。
+
+**当前行为**：不造假检测。组装里未见停用服务器的说明段时，诊断如实报「未连接，或该会话使用完整提示词预设——后者说明页过滤不生效」；配了改写却没见到段时，诊断报「改写本次未生效」。界面组头只在运行时事实（removed）成立时才说「说明页已一并隐藏」，面板只在 rewritten 含该服务器时才说「上次组装已生效」。工具半边不受此边界影响。
+
+**同一根因的另一处表现**：`instructions.js` 从不读 `section.complete`，所以「已生效」这句是推断出来的，不是验证出来的。当前实例四个说明页确实生效（系统提示词里是改写后的文本），但代码没有能力区分「真的生效」和「被宿主还原」。这条是 `UNVERIFIABLE`，不冒充已解决。
 
 ---
 
-## 三、恢复出厂没有二次确认
-
-点一下就把全部规则清空。后端会留备份（`tool-keeper.json.bak-<时间戳>`），但页面没有提示备份在哪，也没有撤销按钮。
-
----
-
-## 四、drop 写错是 fail-open
+## 三、drop 写错是 fail-open
 
 选择层只有逐条 `drop`，没有 fail-closed 的兜底：
 
@@ -37,17 +39,7 @@
 
 ---
 
-## 五、完整提示词预设下说明页过滤与改写都不生效，且检测不到
-
-会话选用「完整提示词」类预设（dsh-persona `config.complete:true`）时，宿主在 waterfall **之后**无条件恢复 complete 段（`dsh-system-prompt/src/index.ts:693`），本插件对 sections 的过滤与改写被覆盖。
-
-更麻烦的是**检测不到**：waterfall 里的段只有 name/text/interpolate，complete 标志被剥掉（同文件 667-672）；而 `deployment:persona-prefix` 段构造器恒注册（463-468），scoped 同名段又只在 complete 时出现——任何「数 persona-prefix 段」的启发式都会误报。
-
-**当前行为**：不造假检测。组装里未见停用服务器的说明段时，诊断如实报「未连接，或该会话使用完整提示词预设——后者说明页过滤不生效」；配了改写却没见到段时，诊断报「改写本次未生效」。界面组头只在运行时事实（removed）成立时才说「说明页已一并隐藏」，面板只在 rewritten 含该服务器时才说「上次组装已生效」。工具半边不受此边界影响。
-
----
-
-## 六、停用服务器的资源仍可读
+## 四、停用服务器的资源仍可读
 
 服务器开关隐藏的是工具与说明页。`read_mcp_resource` 等内置资源工具背后的 provider 仍注册着停用服务器的资源（`dsh-mcp-client/src/server-context.ts:29-31`），模型若主动点名仍读得到。
 
@@ -55,26 +47,62 @@
 
 ---
 
-## 七、已知的取舍与遗留
+## 五、参数改写没有独立开关
 
-| 项 | 位置 | 状态 |
-| --- | --- | --- |
-| `applied` 数组 | `rules.js` `rewriteParameterDescriptions` | 只 push 不读。留着无害，删了得改两处返回点；暂留 |
-| `renameSync` 静默降级 | `config.js` `writeConfig` | Windows 目标被占用时改为直接写，可能写坏配置且无日志 |
-| 空白「不落盘」契约无强制 | `rules.js` / `api.js` | 注释称调用方负责，实测 `{rewrite:" "}` 仍能落盘成死键 |
-| 遗留空串改写会让写入口 400 | `rules.js` 的空串诊断 + `config.js` 的写前校验 | 升级摩擦：磁盘上留着 `rewrite.<工具>=""` 时，改任何工具都会 400，而界面上看不到那个键（空串条目已被 `normalizeConfig` 丢弃）。逃生口：`op=reset`，或 `op=set {rewrite:{}}` |
-| `instructions` 对 `complete` 段无条件报「已生效」 | `instructions.js` | 代码从不读 `section.complete`，而宿主契约写明该段会被还原。当前实例四段确实生效，属**未经验证的断言**，标 `UNVERIFIABLE` |
-| 导出/导入静默丢数据 | `api.js` | 导出读坏时用空基线顶替、无标记；导入只搬 `servers/tools/rewrite`，旧字段静默删除后返回 `ok:true` |
-| 补丁可叠两层、`restore` 非栈 | `index.js` | 见第一条 |
-| `servers.<名>.keep` 被忽略后原隐藏工具重现 | `rules.js` | 只有一句「请改写成 tools.<完整名>」，没说明「因此这批工具现在全部可见」 |
-
-已清理：`snapshot().groups`、`num()`、`entry.leaf`、`entry.parameters`、`catalog.names()` 的注释矛盾、「三条边界」空壳标题、过期白名单注释（三处）、256KB 文案、`ui` 里的死局部变量 `hidden`。
-
-**`provideStatus` 与 `source` 为什么保留**：首轮清理时我把它们当死代码删了，240 条测试立刻红了 18 条。复查发现——`ctx.provide('tool_keeper')` 是插件的对外服务契约（本仓库无消费者不等于别处没有），`source` 是 `state` 响应的一部分、被界面测试依赖。**「本仓库没人用」不等于「契约允许删」。** 这属于我判断失误，记录在此以免重犯。
+只要配了 `rewrite.<工具>.properties` 就生效。一个手滑写进去的参数改写会立刻起作用，而它改的是模型理解参数含义的依据。
 
 ---
 
-## 八、preflight 有两项长期 UNVERIFIABLE
+## 六、恢复出厂没有二次确认
+
+点一下就把全部规则清空。后端会留备份（`tool-keeper.json.bak-<时间戳>`），但页面没有提示备份在哪，也没有撤销按钮。
+
+---
+
+## 七、磁盘上遗留的空串改写会让所有写入口 400
+
+`rewrite.<工具> = ""` 现在会被拒绝并报问题（空白说明会让模型拿到一个没有说明的工具）。但配置里若**已经**留着这样的条目，`config.js` 的写前校验会拒绝每一次写入：
+
+```
+磁盘含 rewrite.mcp__x__y=""  →  改任何工具都是 400
+```
+
+麻烦在于**界面上看不到那个键**：空串条目已被 `normalizeConfig` 丢弃，页面既不显示也点不到。
+
+**逃生口**：`op=reset` 或 `op=set {"rewrite":{}}`。两者都需要手改或调 API，用户不会自己想到。
+
+**为什么暂不自动清理**：自动删掉磁盘上的键属于替用户改数据，与本插件「不替用户做决定」的立场冲突。宁可让它报错并点名，也不静默清理。
+
+---
+
+## 八、导出与导入会静默丢数据
+
+- **导出**：配置读不出来时用 `createBaselineConfig()` 顶替，返回体没有任何标记。用户以为导出了自己的配置，实际是空基线；再导回去就把规则清了。
+- **导入**：只搬 `servers` / `tools` / `rewrite` 三个字段，旧字段（`enabled`、`servers.*.keep`）被无声删除，返回仍是 `ok: true`。
+
+同一批字段在 `op=set` 里出现会 400 拒绝，在 `op=import` 里被静默丢弃——两条路的严格程度不一致。
+
+---
+
+## 九、`config.js` 的写盘降级是静默的
+
+`writeConfig` 用「写临时文件 + rename」保证原子性。Windows 上目标被占用时 `renameSync` 会抛 `EPERM/EEXIST/EACCES`，此时退化为直接 `writeFileSync(path, …)`：非原子，中途崩溃会留下半截配置，**且没有任何日志或诊断**。
+
+**为什么暂不动**：退化成直接写本身是合理的——不写就等于这次修改全丢。缺的只是一条日志，属于可观测性问题，不是数据正确性问题。
+
+---
+
+## 十、几处「写了但没人读」的残留
+
+| 项 | 位置 | 状态 |
+| --- | --- | --- |
+| `applied` 数组 | `rules.js` `rewriteParameterDescriptions` | 只 push 不读。删它要改三处返回点，收益低于风险，暂留 |
+| 空白「不落盘」契约无强制 | `rules.js` / `api.js` | 注释称调用方负责，实测 `{rewrite:" "}` 仍能落盘成死键 |
+| `servers.<名>.keep` 被忽略后原隐藏工具重现 | `rules.js` | 只报「请改写成 tools.<完整名>」，没说明「因此这批工具现在全部可见」 |
+
+---
+
+## 十一、preflight 有两项长期 UNVERIFIABLE
 
 稳态输出 **7 PASS / 0 FAIL / 2 UNVERIFIABLE**。那两项只能在真机上判，判法与结论见 [TESTING](./TESTING.md) 的验收表：
 
@@ -92,3 +120,5 @@
 | 同源校验信任客户端 `Host` 头 | 浏览器无法伪造 `Host`，浏览器侧不可利用 |
 | `ctx.effect` 没传 label | 只影响调试可读性 |
 | `package.json` 没有 `author` 字段 | 私有项目 |
+| `ToolCatalog.names()` 无调用方 | 是类的正常接口（与 `has`/`get`/`size` 同类），不是孤立死代码 |
+| `ctx.provide('tool_keeper')` 与 `state.source` 本仓库无消费者 | 前者是跨插件的服务契约，后者是 API 线格式。**「本仓库没人用」不等于「契约允许删」**——试过删除，18 条测试立刻变红 |

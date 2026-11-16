@@ -11,7 +11,7 @@ npm install    # ui.test.js 要真的渲染组件，不是看源码字符串
 npm test
 ```
 
-236 条，分六组：
+240 条，分六组：
 
 | 文件 | 测什么 |
 |---|---|
@@ -103,7 +103,8 @@ Invoke-WebRequest -Uri "http://127.0.0.1:<端口>/tool-keeper/api" -Method Post 
 | 字段 | 含义 |
 |---|---|
 | `patched` | 补丁装上了没。`false` 说明插件没在工作 |
-| `stale` | `true` = 磁盘配置与内存里用的不一样，即「改了还没重启」 |
+| `stale` | 三态。`true` = 磁盘配置与内存里用的不同（改了没重启，或文件被外部改动过）；`false` = 一致；`null` = 无法判定，读不到可作基准的配置。**`null` 不是 `false`**，页面不能把「不知道」显示成「没问题」 |
+| `reason` | `patched: false` 时的原因。页面和 `tool_keeper` 的 status 都读它 |
 | `groups[].roles[].effective` | 引擎的实际判定（keep / drop），页面开关以此为准 |
 | `groups[].roles[].source` | 判定来自哪层规则：`protected` / `tool` / `server-disabled` / `rewrite` / `none` |
 | `rules.disabledServers` | 停用的服务器集合，页面服务器开关以此为准 |
@@ -163,7 +164,7 @@ Slots.listSubTree({ root: 'settings.section' })
 node <plugin-kit>/skills/plugin-kit/scripts/preflight.mjs .
 ```
 
-稳态输出 **7 PASS / 0 FAIL / 2 UNVERIFIABLE**，两项的原因与结论见 [KNOWN-ISSUES.md](./KNOWN-ISSUES.md) 第八节。**不要把 UNVERIFIABLE 写成 PASS。**
+稳态输出 **7 PASS / 0 FAIL / 2 UNVERIFIABLE**，两项的原因与结论见 [KNOWN-ISSUES.md](./KNOWN-ISSUES.md) 第十一节。**不要把 UNVERIFIABLE 写成 PASS。**
 
 另外三项体检（升级 DSH 后必跑）：
 
