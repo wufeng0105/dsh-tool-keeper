@@ -63,7 +63,22 @@ export function apply(ctx, config) {
   }
   for (const problem of problems) log.warn('config: ' + problem);
 
-  const seen = new Set();
+  /**
+   * 工具名 → 当前注册着的份数。
+   *
+   * 不能用只增不减的 Set：宿主在服务器断开、作用域销毁、重连时都会调用
+   * register 返回的 disposer 把工具注销掉（`dsh-tools/src/index.ts:148-152`
+   * 返回 `layers.effect(...)` 的 disposer）。名字留在集合里，诊断就会以为
+   * 那个工具还在——于是「这条规则已经失效」这类警告永远不出现，正好是本插件
+   * 要消灭的那种静默。
+   *
+   * 用计数而不是集合：同一名字可能被注册不止一次（重连、多作用域），
+   * 注销一份不等于它已经不在了。
+   */
+  const liveTools = new Map();
+  /** 此刻真的注册着的工具名。 */
+  const liveNames = () => [...liveTools.keys()];
+
   const catalog = new ToolCatalog();
   const missingParams = new Map(); // toolName -> string[]
 
@@ -72,7 +87,7 @@ export function apply(ctx, config) {
    * 插件级启停交给 DSH 插件页（关掉插件 = 本文件根本不执行），这里不再有全局开关。
    * @type {{patched: boolean, reason?: string, restore: () => void}}
    */
-  const patch = installPatch(ctx, rules, seen, catalog, missingParams, log);
+  const patch = installPatch(ctx, rules, liveTools, catalog, missingParams, log);
 
   if (!patch.patched) {
     log.warn('could not install the registration patch: ' + patch.reason);
@@ -88,12 +103,12 @@ export function apply(ctx, config) {
   // 此刻对不对，而不是启动那一刻对不对。否则删掉一条有问题的配置后，那句诊断
   // 会一直挂到下次重启——而重启正是用户刚做过、却发现没用的事。
   //
-  // 工具名集合（seen）和 missingParams 只能用运行时捕获的那份：它们描述的是
-  // 「宿主实际注册了什么」，磁盘配置读不出来这个事实。
+  // 工具名集合用运行时捕获的那份：它描述的是「宿主此刻注册着什么」，
+  // 磁盘配置推不出来。注册与注销都要记，否则已注销的名字会让诊断沉默。
   const computeDiagnostics = (takeRules) => {
     try {
       const active = takeRules ?? rules;
-      const base = diagnose(active, [...seen]);
+      const base = diagnose(active, liveNames());
       // 改写的参数名不存在也要报出来（DESIGN「只改文字，不碰结构」）
       for (const [tool, params] of missingParams) {
         const stillConfigured = active.rewrites?.has(tool) === true;
@@ -176,8 +191,23 @@ export function apply(ctx, config) {
   log.info(`patched; config=${path}`);
 }
 
+/**
+ * 退掉一份注册计数。
+ *
+ * 用计数不用集合：同一名字可能被注册不止一次（服务器重连、多作用域共享
+ * 一个进程级补丁），注销一份不等于它已经不在了。记到 0 才删键。
+ *
+ * @param liveTools - name → 当前份数
+ * @param name - 工具名
+ */
+function decrementLive(liveTools, name) {
+  const n = liveTools.get(name) ?? 0;
+  if (n <= 1) liveTools.delete(name);
+  else liveTools.set(name, n - 1);
+}
+
 /** 装 register 补丁。任何异常都返回 patched:false 而不是抛出。 */
-function installPatch(ctx, rules, seen, catalog, missingParams, log) {
+function installPatch(ctx, rules, liveTools, catalog, missingParams, log) {
   let underlying;
   let original;
   let hadOwn;
@@ -198,11 +228,14 @@ function installPatch(ctx, rules, seen, catalog, missingParams, log) {
 
   const wrapped = function register(definition, options) {
     let verdict;
+    const nm = definition === null || definition === undefined ? undefined : definition.name;
+    const named = typeof nm === 'string' && nm !== '';
     try {
       // 先留原文（一键还原、界面展开编辑的共同前置），必须在改写之前
       catalog.record(definition);
-      const nm = definition === null || definition === undefined ? undefined : definition.name;
-      if (typeof nm === 'string' && nm !== '') seen.add(nm);
+      if (named) {
+        liveTools.set(nm, (liveTools.get(nm) ?? 0) + 1);
+      }
       verdict = applyToDefinition(definition, rules);
     } catch (error) {
       // 自己的判定出错时绝不阻断注册（DESIGN「七、可靠性与已知风险」）
@@ -210,7 +243,10 @@ function installPatch(ctx, rules, seen, catalog, missingParams, log) {
       return original.call(this, definition, options);
     }
     if (verdict.drop) {
-      // 不注册：返回一个无害的 disposer，因为调用方会在下一轮同步时调用它
+      // 不注册：返回一个无害的 disposer，因为调用方会在下一轮同步时调用它。
+      // 已经被隐藏的工具本来就没进注册表，计数要退回去——否则它会一直算作
+      // 「在线」，而它其实从来没被注册。
+      if (named) decrementLive(liveTools, nm);
       return () => {};
     }
     // 参数名没命中也要记录诊断，不能只在 definition 真的被改过时才记。
@@ -218,12 +254,23 @@ function installPatch(ctx, rules, seen, catalog, missingParams, log) {
     // 若把记录放在 `definition !== definition` 里，missingParams 就永远丢失，
     // 用户看到的是一个「看起来生效了、其实一个字都没改」的改写。
     if (verdict.missingParams !== undefined && verdict.missingParams.length > 0) {
-      const nm = definition === null || definition === undefined ? undefined : definition.name;
-      if (typeof nm === 'string' && nm !== '') {
+      if (named) {
         missingParams.set(nm, verdict.missingParams);
       }
     }
-    return original.call(this, verdict.definition, options);
+    const dispose = original.call(this, verdict.definition, options);
+    // 宿主注销工具时会调用这个 disposer（`dsh-tools/src/index.ts:148-152`
+    // 返回 layers.effect 的 disposer）。不挂钩，名字会永远留在 liveTools 里，
+    // 诊断就以为那个工具还在——「规则已失效」这类警告从此不出现。
+    if (named && typeof dispose === 'function') {
+      return () => {
+        try { dispose(); } catch (error) {
+          log.warn('tool disposer failed for ' + nm + ': ' + String(error?.message ?? error));
+        }
+        decrementLive(liveTools, nm);
+      };
+    }
+    return dispose;
   };
 
   let installed = false;
