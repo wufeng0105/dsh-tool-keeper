@@ -39,9 +39,9 @@ export function registerTool(ctx, options) {
     description: [
       '管理模型每轮能看到的工具与说明：决定哪些工具出现在可选范围里，以及它们各自怎么描述自己。',
       'action=status 看概况与诊断；action=list 列全部工具（按来源分组）；',
-      'action=server 打开/关闭整台 MCP 服务器（enabled=true/false），或改写它的说明页（text，空串=恢复原样）；关闭时工具与说明页一并隐藏；',
+      'action=server 打开/关闭整台 MCP 服务器（enabled=true/false），或改写它的说明页（text；text 传空串=清除该服务器改写）。关闭时工具与说明页一并隐藏；',
       'action=tool 开关单个工具（state=drop/keep）；',
-      'action=rewrite 改写工具或参数说明（省略 text=清除该工具的改写）；',
+      'action=rewrite 改写工具或参数说明（省略 text=清除该工具的改写；text 传空串会被拒绝并说明原因——空白说明会让模型拿到一个没有说明的工具）；',
       'action=reset 恢复出厂基线。',
       '改动写入 tool-keeper.json，需重启 DSH 才对已注册的工具与说明页生效。',
       '插件级启停由 DSH 插件页负责，本工具不再提供全局开关。',
@@ -184,7 +184,10 @@ export function registerTool(ctx, options) {
           ok: true,
           server,
           ...(hasEnabled ? { enabled: args.enabled } : {}),
-          ...(hasText ? { rewrite: args.text } : {}),
+          // 只在真的写入了改写时才回改写内容。清除时回 "" 会让人以为
+          // 磁盘上留着一条空改写，而实际上那个字段已经被删掉了。
+          ...(hasText && args.text.trim() !== '' ? { rewrite: args.text } : {}),
+          ...(hasText && args.text.trim() === '' ? { cleared: true } : {}),
           note: done.join('，') + '；重启后生效',
         };
       }
