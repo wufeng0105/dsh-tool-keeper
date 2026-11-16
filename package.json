@@ -1,6 +1,6 @@
 {
   "name": "@wufeng0105/dsh-tool-keeper",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "type": "module",
   "description": "AI re-reads every tool's manual on every reply. Hide the ones you never use, and rewrite the rest.",
   "license": "MIT",
@@ -53,7 +53,8 @@
     "dsh": ">=0.2.2-rc.2 <0.3.0-0"
   },
   "scripts": {
-    "test": "node --test tests/*.test.js"
+    "test": "node --test tests/*.test.js",
+    "check-rewrites": "node scripts/check-rewrites.mjs"
   },
   "devDependencies": {
     "react": "^18.3.1",
