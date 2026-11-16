@@ -4,6 +4,7 @@
 
 | 版本 | 日期 | 改了什么 |
 |---|---|---|
+| 0.7.1 | 2026-11-17 | 修掉审计里会造成「说了不成立的话」的七条：`rewrite.<工具>` 与 `properties.<参数>` 的空串不再静默把说明抹成空白（改为「未配置」并落诊断）；`properties.__proto__` 不再静默无效——`JSON.parse` 出来的是自有键，旧代码会读到 `Object.prototype`、当成命中、赋值却不落属性，两层都加了防护；`stale` 改三态，读不出配置时说「无法判定」而不是「一致」；`state` 补 `reason`，界面不再永远显示「未知原因」；空目录文案按 `patched` 分流，补丁没装上时不再承诺重启有效；`problems` 去重并只保留此刻仍成立的。顺手清掉 `snapshot().groups`、`num()`、`entry.leaf`、`entry.parameters` 等死代码与过期注释。**保留** `ctx.provide('tool_keeper')` 与 `source`——首轮当死代码删掉后 18 条测试变红，它们是对外契约，不是实现细节 |
 | 0.7.0 | 2026-11-17 | **核心目标重述：本插件管的是「模型读到的 == 它实际能做的」，不是省 token。** 删掉全部体量计量：`ToolCatalog` 不再记 `originalChars`/`originalDescChars`，`tool_keeper` 的 `list` 不再报字符数，`state` 不再回 `chars`/`totalChars`；同组工具排序从「按体量降序」改为「按名字」，使目录与注册顺序无关。README 与 DESIGN 按新主线整篇重写（不是改几句）：问题从「读得多」改述为「读到的未必成立」，并由此重新推出只改文字、不改结构、`status` 不吐原文、界面不显示体量这些取舍。顺手修两处过期陈述（README 写「236 条测试」实为 239；KNOWN-ISSUES 交叉引用节号） |
 | 0.6.4 | 2026-11-17 | 出厂注释更正：旧注释还在讲 0.4.0 删掉的 `enabled` 全局字段，改为按现存三种写法（`tools` 关工具、`rewrite` 改说明、`servers` 关服务器与其说明页）逐条交代；新增 `scripts/check-rewrites.mjs`（7 条判据，机判说明页与工具说明的写作质量），接上 `npm run check-rewrites`，判法与 C7 的局限见 TESTING 第六节；删掉未被任何文档引用、也不在发布包里的 `_catalog-entry.yml` |
 | 0.6.3 | 2026-11-17 | 文档按「一体成文」重写：README 按「问题 → 怎么工作 → 两种用法 → 规则怎么生效 → 边界」一条主线重排，DESIGN 合并重复小节，同一件事只留一个真相源；删掉 4 处过期陈述（`state` 的死字段 `chars`/`descChars` 直接从 api 删掉、`server` 动作「只接受 enabled」、patch 名写错成无 scope 包名、README 说「三个麻烦」却列了四条）；验收编号统一为 A1–A11 / B1–B3 |
