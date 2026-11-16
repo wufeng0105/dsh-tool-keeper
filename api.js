@@ -180,15 +180,17 @@ export function mountApi(ctx, deps) {
             // 补丁装不上时页面要说出真实原因；不带它，界面只能显示「未知原因」。
             reason: s.reason,
             configPath,
-            // true = 磁盘上的配置与启动时加载的不同，即「改了还没重启」。
-            // false = 一致。null = 无法判定（配置读不出，没有可比对的基准）。
-            stale,
-            // 三态：true 一致外的差异 / false 一致 / null 无法判定（读不出磁盘配置）。
+            // 三态：true = 磁盘与启动时用的不同（改了没重启，或文件被外部改动）；
+            // false = 一致；null = 无法判定（读不到可作基准的配置）。
             stale,
             // 磁盘此刻的真实状况排最前：读不出来就直说，不要拿空配置的结论顶上去。
             problems: mergeProblems(diskError, problems, s.problems),
-            diagnostics: s.diagnostics,
-            diagnostics: s.diagnostics,
+            // 诊断按磁盘当前配置现算，不用启动时的快照——
+            // 否则删掉一条有问题的配置后，那句诊断会一直挂到下次重启。
+            // 快照没提供 diagnosticsFor（测试桩、旧载荷）时退回自带那份。
+            diagnostics: typeof s.diagnosticsFor === 'function'
+              ? s.diagnosticsFor(diskConfig ?? {})
+              : s.diagnostics,
             // 说明页半边的运行时事实（最近一次组装；未安装时 installed:false）。
             // texts 只给设置页用（编辑器要显示原文）；model 侧 status 会剥掉它。
             instructions: s.instructions ?? { installed: false, removed: [], rewritten: [], texts: {} },

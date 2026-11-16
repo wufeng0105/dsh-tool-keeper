@@ -82,12 +82,22 @@ export function apply(ctx, config) {
   const instructionsState = { installed: false, removed: [], rewritten: [], originals: new Map(), diagnostics: [] };
   const instructions = installInstructionsFilter(ctx, rules, instructionsState, log);
 
-  // 定期把诊断算出来（首次注册后即可）
-  const computeDiagnostics = () => {
+  // 定期把诊断算出来（首次注册后即可）。
+  //
+  // 参数 takeRules 允许调用方用「磁盘上的当前配置」再算一遍：诊断描述的是配置
+  // 此刻对不对，而不是启动那一刻对不对。否则删掉一条有问题的配置后，那句诊断
+  // 会一直挂到下次重启——而重启正是用户刚做过、却发现没用的事。
+  //
+  // 工具名集合（seen）和 missingParams 只能用运行时捕获的那份：它们描述的是
+  // 「宿主实际注册了什么」，磁盘配置读不出来这个事实。
+  const computeDiagnostics = (takeRules) => {
     try {
-      const base = diagnose(rules, [...seen]);
+      const active = takeRules ?? rules;
+      const base = diagnose(active, [...seen]);
       // 改写的参数名不存在也要报出来（DESIGN「只改文字，不碰结构」）
       for (const [tool, params] of missingParams) {
+        const stillConfigured = active.rewrites?.has(tool) === true;
+        if (!stillConfigured) continue;
         for (const p of params) {
           base.push({ kind: 'warning', target: `rewrite.${tool}.properties.${p}`, message: `改写里的参数 ${p} 在这个工具上不存在，这段参数说明不会生效` });
         }
@@ -110,6 +120,18 @@ export function apply(ctx, config) {
     reason: patch.reason,
     problems: [...problems, readError].filter(Boolean),
     diagnostics: computeDiagnostics(),
+    /**
+     * 用另一份配置算诊断（设置页读磁盘当前内容时用）。
+     * 传进来的若是坏配置，退回启动时那份，别把异常抛给调用方。
+     */
+    diagnosticsFor: (rawConfig) => {
+      try {
+        const { rules: diskRules } = normalizeConfig(rawConfig);
+        return computeDiagnostics(diskRules);
+      } catch {
+        return computeDiagnostics();
+      }
+    },
     configPath: path,
     loadedHash,
     instructions: {
