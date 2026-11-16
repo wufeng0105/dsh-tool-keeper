@@ -396,7 +396,7 @@ export function applyToDefinition(definition, rules) {
  */
 export class ToolCatalog {
   constructor() {
-    /** name → { description, parameters, group, server, leaf, protected } */
+    /** name → { group, server, leaf, description, protected } */
     this.entries = new Map();
   }
 

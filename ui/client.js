@@ -191,7 +191,7 @@ window.__ModuleLoader__.load({
      * 点击开关后应该写入的 `tools` 映射。
      *
      * `effective` 是点击那一刻引擎的判定，**不是**配置里的条目：
-     * 被服务器白名单/总开关关掉的行，`tools` 里根本没有条目，
+     * 被服务器总开关关掉的行，`tools` 里根本没有条目，
      * 若按 `tools[name]` 判断就会写成 drop（再关一次），从界面永远打不开。
      *
      * 打开 = 写 keep 覆盖（单工具优先级高于服务器规则）；关闭 = 写 drop。
@@ -539,10 +539,8 @@ window.__ModuleLoader__.load({
       data.groups.forEach(function (g) { all = all.concat(g.roles); });
 
       // 开关状态一律读引擎判定（effective），不自己从 tools 推。
-      // 从 tools 推会漏掉服务器白名单与总开关，把被丢掉的工具显示成「开」。
+      // 从 tools 推会漏掉被服务器总开关丢掉的工具，把它们显示成「开」。
       var isHidden = function (role) { return role.effective === 'drop'; };
-
-      var hidden = all.filter(isHidden);
 
       var groups = data.groups.map(function (g) {
         if (query === '') return g;
@@ -596,14 +594,15 @@ window.__ModuleLoader__.load({
           ? h('p', { className: 'tw-note', 'data-tone': 'bad' }, props.error) : null,
         props.notice !== null && props.notice !== undefined
           ? h('p', { className: 'tw-note' }, props.notice) : null,
-        // stale 三态：true 改了没重启 / false 一致 / null 无法判定。
-        // null 不能当成「一致」——那是把不知道说成没问题。
+        // stale 三态：true 磁盘内容与启动时不同 / false 一致 / null 无法判定。
+        // 注意 stale===true 只说明「磁盘变了」，不说明「是你保存的」——文件被外部
+        // 改坏也会走到这里。所以文案只说事实，不替用户编造「已保存」这个因果。
         data.stale === null || data.stale === undefined
           ? h('p', { className: 'tw-note', 'data-tone': 'warn' },
-            '无法判断配置是否已生效：启动时没能读到配置文件。下面的内容取自磁盘当前状态。')
+            '无法判断配置是否已生效：读不到磁盘上的配置。下面的内容取自内存里的启动状态。')
           : data.stale
             ? h('p', { className: 'tw-note', 'data-tone': 'warn' },
-              '已保存。重启 DSH 后才生效——在此之前，模型仍然能看见并使用这些工具与它们的说明页。')
+              '磁盘上的配置与当前生效的不同，重启 DSH 后才生效——在此之前，模型仍然能看见并使用这些工具与它们的说明页。')
             : null,
 
         /* 工具栏 */

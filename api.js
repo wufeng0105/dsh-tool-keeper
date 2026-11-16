@@ -71,20 +71,25 @@ function ok(res, body) {
 }
 
 /**
- * 合并「磁盘现算」与「启动时算」两批问题。
+ * 合并「磁盘此刻」与「进程启动时」两批配置问题。
  *
- * 同一份事实可能被两侧各算一遍（配置没变时尤其如此），直接拼接会让页面把
- * 同一条问题说两遍。更糟的是磁盘已经修好、启动期的旧问题还挂在页面上——
- * 那等于报出一条此刻不成立的话，正是本插件要消灭的那类。
+ * 判据只有一条：**什么问题在「现在」仍然成立。**
  *
- * 所以：按内容去重，并且**只保留此刻仍然成立的**——磁盘现算的那批权威，
- * 启动期那批里凡是「磁盘这侧已经不再报」的，一律丢弃。
+ * - 磁盘能读出来 → 磁盘现算的那批就是此刻的全部真相。启动期那批一律丢弃，
+ *   哪怕它曾经为真；磁盘修好之后还挂着旧问题，等于报出此刻不成立的坏消息。
+ * - 磁盘读不出来 → 现算的那批是拿空配置算的，没有意义；此时只有启动期那批
+ *   （可能包含更早的读失败）还带着信息，保留它，并补上这一次的读失败。
  *
- * @param diskProblems - 由磁盘当前配置现算出的问题
- * @param startupProblems - 进程启动时算出的问题（含读取失败）
- * @returns {string[]} 去重后的问题清单
+ * 早期版本用「启动期消息是否以 cannot/invalid JSON 开头」做例外，结果是两个
+ * 方向都错：修好的读失败永久挂着（该丢的没丢），磁盘坏掉时启动期的真问题又被
+ * 清空（该留的没留）。判据换成一件事——磁盘现在读得出来吗——两边都对。
+ *
+ * @param diskError - 本次读磁盘配置的错误；undefined 表示读成功
+ * @param diskProblems - 由磁盘当前内容现算出的问题
+ * @param startupProblems - 进程启动时算出的问题
+ * @returns {string[]} 此刻仍然成立的问题，已去重
  */
-function mergeProblems(diskProblems, startupProblems) {
+function mergeProblems(diskError, diskProblems, startupProblems) {
   const out = [];
   const seen = new Set();
   const push = message => {
@@ -92,16 +97,16 @@ function mergeProblems(diskProblems, startupProblems) {
     seen.add(message);
     out.push(message);
   };
-  for (const message of Array.isArray(diskProblems) ? diskProblems : []) push(message);
-  // 启动期问题只有在磁盘这侧也仍然报同一句时才保留，否则它已经过期。
-  const diskSet = new Set(Array.isArray(diskProblems) ? diskProblems : []);
-  for (const message of Array.isArray(startupProblems) ? startupProblems : []) {
-    if (typeof message === 'string' && message !== '' && !diskSet.has(message)) {
-      // 读取失败这类问题磁盘侧算不出来（根本没读到），必须保留；
-      // 其余的若是磁盘侧不再报，说明已经不成立，丢弃。
-      if (/^(cannot |invalid JSON)/.test(message)) push(message);
-    }
+
+  if (diskError !== undefined) {
+    // 磁盘读不出来：先报这一次的失败，再补上启动期留下的信息。
+    push(diskError);
+    for (const message of Array.isArray(startupProblems) ? startupProblems : []) push(message);
+    return out;
   }
+
+  // 磁盘读得出：此刻成立的问题只有现算的这一批。
+  for (const message of Array.isArray(diskProblems) ? diskProblems : []) push(message);
   return out;
 }
 
@@ -141,8 +146,10 @@ export function mountApi(ctx, deps) {
         // ---- state：页面首屏 ----
         if (op === 'state') {
           const s = snapshot();
-          // 读盘上的配置原文，让页面能显示「当前值」而不是只有 catalog
-          const { raw: diskConfig, text: diskText } = readConfig(configPath);
+          // 读盘上的配置原文，让页面能显示「当前值」而不是只有 catalog。
+          // diskError 必须留住：磁盘读不出来时，页面唯一该说的话是「文件有问题」，
+          // 而不是拿着一份空配置算出一堆无关结论，还把它说成「已保存待重启」。
+          const { raw: diskConfig, text: diskText, error: diskError } = readConfig(configPath);
           const config = diskConfig ?? {};
           const { rules, problems } = normalizeConfig(config);
 
@@ -151,9 +158,9 @@ export function mountApi(ctx, deps) {
           // 而此刻模型看到的还是旧的那份；刷新一次连提示都会消失。
           //
           // 三态：true 不一致 / false 一致 / null 无法判定。
-          // loadedHash 为空表示启动时没能读到配置（没有基准），此时若取 false
-          // 就是把「不知道」说成「一致」，恰好在配置出问题的时候骗人。
-          const stale = typeof s.loadedHash !== 'string' || s.loadedHash === ''
+          // 读不出磁盘配置时没有可比对的内容，此时若取 false 就是把「不知道」
+          // 说成「一致」，恰好在配置出问题的时候骗人。
+          const stale = diskError !== undefined || typeof s.loadedHash !== 'string' || s.loadedHash === ''
             ? null
             : hashText(diskText) !== s.loadedHash;
 
@@ -176,9 +183,11 @@ export function mountApi(ctx, deps) {
             // true = 磁盘上的配置与启动时加载的不同，即「改了还没重启」。
             // false = 一致。null = 无法判定（配置读不出，没有可比对的基准）。
             stale,
-            // 两类来源可能重叠：磁盘现算的问题可能和启动时算的是同一条。
-            // 去重后仍然区分来源，页面才能说清「现在是坏的」还是「启动时是坏的」。
-            problems: mergeProblems(problems, s.problems),
+            // 三态：true 一致外的差异 / false 一致 / null 无法判定（读不出磁盘配置）。
+            stale,
+            // 磁盘此刻的真实状况排最前：读不出来就直说，不要拿空配置的结论顶上去。
+            problems: mergeProblems(diskError, problems, s.problems),
+            diagnostics: s.diagnostics,
             diagnostics: s.diagnostics,
             // 说明页半边的运行时事实（最近一次组装；未安装时 installed:false）。
             // texts 只给设置页用（编辑器要显示原文）；model 侧 status 会剥掉它。
@@ -190,7 +199,6 @@ export function mountApi(ctx, deps) {
                 return {
                   name: e.name,
                   server: e.server,
-                  leaf: e.leaf,
                   protected: e.protected,
                   originalDescription: e.description,
                   // 引擎的实际判定，页面开关以此为准

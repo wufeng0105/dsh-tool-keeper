@@ -92,6 +92,9 @@ export function registerTool(ctx, options) {
         const s = snapshot();
         return {
           patched: s.patched,
+          // 补丁装不上时要说原因：页面看得到，模型也该看得到。
+          // 同一个事实两条入口口径不同，等于让一方向另一方撒谎。
+          reason: s.reason,
           configPath: s.configPath,
           toolCount: catalog.size(),
           diagnostics: s.diagnostics,
@@ -190,6 +193,13 @@ export function registerTool(ctx, options) {
       if (action === 'tool') {
         const name = typeof args.name === 'string' ? args.name.trim() : '';
         if (name === '') throw new Error('action=tool 需要 name');
+        // 与 action=server 同一条理由：`tools['__proto__'] = 'drop'` 走原型 setter，
+        // 赋值静默失败，写出来是空对象 —— 会变成「返回 ok: true 但什么都没写」。
+        if (DANGEROUS_KEYS.has(name)) {
+          const error = new Error(`${name} 不能作为工具名`);
+          error.code = 'EINVALID';
+          throw error;
+        }
         if (PROTECTED_TOOLS.includes(name)) {
           throw new Error(`"${name}" 是受保护的基础工具，任何配置都关不掉`);
         }
@@ -222,6 +232,12 @@ export function registerTool(ctx, options) {
         if (target === 'param') {
           const param = typeof args.param === 'string' ? args.param.trim() : '';
           if (param === '') throw new Error('target=param 需要 param');
+          // 同上：`properties['__proto__']` 走原型 setter，写出来是空对象。
+          if (DANGEROUS_KEYS.has(param)) {
+            const error = new Error(`${param} 不能作为参数名`);
+            error.code = 'EINVALID';
+            throw error;
+          }
           const current = base.rewrite[name];
           const entry = current !== null && typeof current === 'object' && !Array.isArray(current)
             ? { ...current }
