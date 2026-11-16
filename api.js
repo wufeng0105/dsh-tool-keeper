@@ -112,8 +112,8 @@ export function mountApi(ctx, deps) {
           const { rules, problems } = normalizeConfig(config);
 
           // 磁盘上的配置 != 启动时加载的那份 → 改了但还没重启。
-          // 页面必须能一直说出这件事：否则保存完立刻按新配置算「省了多少」，
-          // 而此刻一个字节都还没生效；刷新一次连提示都会消失。
+          // 页面必须能一直说出这件事：否则保存完立刻把新配置当成已生效，
+          // 而此刻模型看到的还是旧的那份；刷新一次连提示都会消失。
           const stale = typeof s.loadedHash === 'string' && s.loadedHash !== ''
             && hashText(diskText) !== s.loadedHash;
 
@@ -132,7 +132,7 @@ export function mountApi(ctx, deps) {
             patched: s.patched,
             configPath,
             // true = 磁盘上的配置与启动时加载的不同，即「改了还没重启」。
-            // 此时页面上的隐藏数/节省量都是「重启后才会成立」的数字。
+            // 此时页面上的隐藏数都是「重启后才会成立」的数字。
             stale,
             problems: [...problems, ...s.problems],
             diagnostics: s.diagnostics,

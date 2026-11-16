@@ -91,7 +91,7 @@ test('tool: status 返回 snapshot 的字段', async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('tool: list 按来源分组并给出字符数', async () => {
+test('tool: list 按来源分组', async () => {
   const { definition, dir } = setup();
   const r = await definition.execute({ action: 'list' });
   assert.equal(r.total, 2);
@@ -99,7 +99,16 @@ test('tool: list 按来源分组并给出字符数', async () => {
   assert.deepEqual(groups, ['core', 'mcp:tinyfish']);
   const tf = r.groups.find(g => g.group === 'mcp:tinyfish');
   assert.equal(tf.tools[0].name, 'mcp__tinyfish__search');
-  assert.ok(tf.tools[0].chars > 0);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('tool: list 不报任何体积数字', async () => {
+  const { definition, dir } = setup();
+  const r = await definition.execute({ action: 'list' });
+  for (const g of r.groups) {
+    assert.equal('totalChars' in g, false, '分组不应带字符总数');
+    for (const t of g.tools) assert.equal('chars' in t, false, '工具不应带字符数');
+  }
   rmSync(dir, { recursive: true, force: true });
 });
 

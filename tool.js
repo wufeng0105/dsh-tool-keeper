@@ -24,18 +24,6 @@ import { createBaselineConfig } from './baseline.js';
 
 const TOOL_NAME = 'tool_keeper';
 
-/** 计算一个工具当前占多少字符（用于回答「能省多少」）。 */
-function weightOf(definition) {
-  const d = typeof definition?.description === 'string' ? definition.description.length : 0;
-  let p = 0;
-  try {
-    p = JSON.stringify(definition?.parameters ?? {}).length;
-  } catch {
-    p = 0;
-  }
-  return d + p;
-}
-
 /**
  * 构造并注册工具。
  *
@@ -49,8 +37,8 @@ export function registerTool(ctx, options) {
   const definition = {
     name: TOOL_NAME,
     description: [
-      '管理「哪些工具进入模型上下文」。可查看全部工具及占用、按服务器/单个工具开关、改写工具说明。',
-      'action=status 看概况与诊断；action=list 列全部工具（按来源分组，含字符数）；',
+      '管理模型每轮能看到的工具与说明：决定哪些工具出现在可选范围里，以及它们各自怎么描述自己。',
+      'action=status 看概况与诊断；action=list 列全部工具（按来源分组）；',
       'action=server 打开/关闭整台 MCP 服务器（enabled=true/false），或改写它的说明页（text，空串=恢复原样）；关闭时工具与说明页一并隐藏；',
       'action=tool 开关单个工具（state=drop/keep）；',
       'action=rewrite 改写工具或参数说明（省略 text=清除该工具的改写）；',
@@ -108,8 +96,8 @@ export function registerTool(ctx, options) {
           toolCount: catalog.size(),
           diagnostics: s.diagnostics,
           problems: s.problems,
-          // 只带事实摘要：原文（texts）只给设置页。单台上限 32KB，
-          // 一句 status 就把 N×32KB 灌进上下文，与插件目的相反。
+          // 只带事实摘要：原文（texts）只给设置页。
+          // 一次 status 就把每台服务器的整页原文倒进对话，等于让模型重读它刚被要求别再读的东西。
           instructions: {
             installed: s.instructions?.installed === true,
             removed: s.instructions?.removed ?? [],
@@ -123,10 +111,8 @@ export function registerTool(ctx, options) {
         const groups = [...catalog.groups()].map(([group, entries]) => ({
           group,
           count: entries.length,
-          totalChars: entries.reduce((n, e) => n + e.originalChars, 0),
           tools: entries.map(e => ({
             name: e.name,
-            chars: e.originalChars,
             protected: e.protected,
           })),
         }));

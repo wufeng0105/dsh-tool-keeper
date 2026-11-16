@@ -314,7 +314,7 @@ test('normalizeConfig: 空的 rewrite 对象被拒绝并记问题', () => {
 // ─────────────────────────────────────────────
 // ToolCatalog（原始文本留存）
 // ─────────────────────────────────────────────
-test('ToolCatalog: 记录原始 description 与体积，供还原与界面使用', () => {
+test('ToolCatalog: 记录原始 description 供还原与界面使用', () => {
   const cat = new ToolCatalog();
   cat.record({ name: 'mcp__tinyfish__fetch_content', description: '很长的说明', parameters: { a: 1 } });
   const e = cat.get('mcp__tinyfish__fetch_content');
@@ -322,7 +322,23 @@ test('ToolCatalog: 记录原始 description 与体积，供还原与界面使用
   assert.equal(e.server, 'tinyfish');
   assert.equal(e.leaf, 'fetch_content');
   assert.equal(e.group, 'mcp:tinyfish');
-  assert.ok(e.originalChars > 0);
+});
+
+test('ToolCatalog: 不留存体量字段（本插件管注意力，不管占多少字）', () => {
+  const cat = new ToolCatalog();
+  cat.record({ name: 'x', description: '说明', parameters: { a: 1 } });
+  const e = cat.get('x');
+  assert.equal('originalChars' in e, false, '不应记录字符数');
+  assert.equal('originalDescChars' in e, false, '不应记录描述字符数');
+});
+
+test('ToolCatalog: 同组内按名字排序，结果与注册顺序无关', () => {
+  const cat = new ToolCatalog();
+  cat.record({ name: 'mcp__s__zebra', description: 'z' });
+  cat.record({ name: 'mcp__s__alpha', description: 'a' });
+  cat.record({ name: 'mcp__s__middle', description: 'm' });
+  const names = cat.groups().get('mcp:s').map(e => e.name);
+  assert.deepEqual(names, ['mcp__s__alpha', 'mcp__s__middle', 'mcp__s__zebra']);
 });
 
 test('ToolCatalog: 已记录的条目不被后来者覆盖（保证原文）', () => {

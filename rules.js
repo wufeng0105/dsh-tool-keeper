@@ -359,16 +359,18 @@ export function applyToDefinition(definition, rules) {
 }
 
 /**
- * 工具目录：注册时留存每个工具的原始文本与体量。
+ * 工具目录：注册时留存每个工具的原始定义。
  * 没有它就做不到两件事：
  * - 「一键还原」—— 没有原文，只能删配置 + 重启
  * - 界面展开编辑—— 要显示「现在是什么」和「原来是怎样」
+ *
+ * 只留存文本与归属，不留存体量：本插件管的是模型读到什么，不是占多少字。
  *
  * @module dsh-tool-keeper/catalog
  */
 export class ToolCatalog {
   constructor() {
-    /** name → { description, parameters, group, server, leaf, originalChars, originalDescChars } */
+    /** name → { description, parameters, group, server, leaf, protected } */
     this.entries = new Map();
   }
 
@@ -386,8 +388,6 @@ export class ToolCatalog {
       leaf: parts === undefined ? undefined : parts.leaf,
       description,
       parameters,
-      originalDescChars: description.length,
-      originalChars: description.length + safeLength(parameters),
       protected: isProtected(name),
     });
   }
@@ -411,7 +411,7 @@ export class ToolCatalog {
       }
       list.push(entry);
     }
-    for (const list of out.values()) list.sort((a, b) => b.originalChars - a.originalChars);
+    for (const list of out.values()) list.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     return out;
   }
 
@@ -422,16 +422,6 @@ export class ToolCatalog {
 
   size() {
     return this.entries.size;
-  }
-}
-
-/** 计算 JSON 长度，失败返回 0。 */
-function safeLength(value) {
-  if (value === undefined) return 0;
-  try {
-    return JSON.stringify(value).length;
-  } catch {
-    return 0;
   }
 }
 

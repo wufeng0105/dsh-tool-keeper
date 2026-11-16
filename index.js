@@ -54,7 +54,7 @@ export function apply(ctx, config) {
   const { rules, problems } = normalizeConfig(raw);
 
   // 启动时这份配置的指纹。设置页拿它跟磁盘当前内容比对，
-  // 判断「保存后还没重启」这件事——否则页面会按未生效的配置算节省。
+  // 判断「保存后还没重启」这件事——否则页面会把未生效的配置当成已生效。
   const loadedHash = hashText(configText);
 
   if (readError !== undefined) {
@@ -117,7 +117,7 @@ export function apply(ctx, config) {
       removed: [...instructionsState.removed],
       rewritten: [...(instructionsState.rewritten || [])],
       // 原文只给设置页（api state）用；tool_keeper 的 status 会剥掉它，
-      // 避免模型一句 status 把 N×32KB 原文灌进上下文。
+      // 以免模型一句 status 就把每台服务器的整页原文倒进对话。
       texts: Object.fromEntries(instructionsState.originals instanceof Map ? instructionsState.originals : []),
     },
     groups: [...catalog.groups()].map(([group, entries]) => ({
@@ -127,8 +127,6 @@ export function apply(ctx, config) {
         server: e.server,
         leaf: e.leaf,
         protected: e.protected,
-        originalDescChars: e.originalDescChars,
-        originalChars: e.originalChars,
         originalDescription: e.description,
       })),
     })),
