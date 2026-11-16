@@ -289,8 +289,9 @@ test('index: 状态里不再有统计计数', () => {
   apply(ctx, { configPath });
   const status = readStatus(state);
   assert.equal(status.stats, undefined, '不要维护没人读、又不准的计数');
-  // 真实的工具清单由目录提供，不靠计数
-  assert.ok(Array.isArray(status.groups), '工具清单从目录来');
+  // 快照里也不该有 groups 副本：真正的工具清单由 catalog.groups() 直接提供，
+  // 在快照里再映射一份没人读，只会在两处各维护一遍。
+  assert.equal(status.groups, undefined, '工具清单不进快照，直接从目录取');
   rmSync(dir, { recursive: true, force: true });
 });
 

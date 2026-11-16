@@ -71,6 +71,41 @@ function ok(res, body) {
 }
 
 /**
+ * 合并「磁盘现算」与「启动时算」两批问题。
+ *
+ * 同一份事实可能被两侧各算一遍（配置没变时尤其如此），直接拼接会让页面把
+ * 同一条问题说两遍。更糟的是磁盘已经修好、启动期的旧问题还挂在页面上——
+ * 那等于报出一条此刻不成立的话，正是本插件要消灭的那类。
+ *
+ * 所以：按内容去重，并且**只保留此刻仍然成立的**——磁盘现算的那批权威，
+ * 启动期那批里凡是「磁盘这侧已经不再报」的，一律丢弃。
+ *
+ * @param diskProblems - 由磁盘当前配置现算出的问题
+ * @param startupProblems - 进程启动时算出的问题（含读取失败）
+ * @returns {string[]} 去重后的问题清单
+ */
+function mergeProblems(diskProblems, startupProblems) {
+  const out = [];
+  const seen = new Set();
+  const push = message => {
+    if (typeof message !== 'string' || message === '' || seen.has(message)) return;
+    seen.add(message);
+    out.push(message);
+  };
+  for (const message of Array.isArray(diskProblems) ? diskProblems : []) push(message);
+  // 启动期问题只有在磁盘这侧也仍然报同一句时才保留，否则它已经过期。
+  const diskSet = new Set(Array.isArray(diskProblems) ? diskProblems : []);
+  for (const message of Array.isArray(startupProblems) ? startupProblems : []) {
+    if (typeof message === 'string' && message !== '' && !diskSet.has(message)) {
+      // 读取失败这类问题磁盘侧算不出来（根本没读到），必须保留；
+      // 其余的若是磁盘侧不再报，说明已经不成立，丢弃。
+      if (/^(cannot |invalid JSON)/.test(message)) push(message);
+    }
+  }
+  return out;
+}
+
+/**
  * 挂载路由。返回 disposer；宿主没有 webServer 时返回空函数（不算失败）。
  *
  * @param ctx - Cordis 上下文
@@ -114,10 +149,15 @@ export function mountApi(ctx, deps) {
           // 磁盘上的配置 != 启动时加载的那份 → 改了但还没重启。
           // 页面必须能一直说出这件事：否则保存完立刻把新配置当成已生效，
           // 而此刻模型看到的还是旧的那份；刷新一次连提示都会消失。
-          const stale = typeof s.loadedHash === 'string' && s.loadedHash !== ''
-            && hashText(diskText) !== s.loadedHash;
+          //
+          // 三态：true 不一致 / false 一致 / null 无法判定。
+          // loadedHash 为空表示启动时没能读到配置（没有基准），此时若取 false
+          // 就是把「不知道」说成「一致」，恰好在配置出问题的时候骗人。
+          const stale = typeof s.loadedHash !== 'string' || s.loadedHash === ''
+            ? null
+            : hashText(diskText) !== s.loadedHash;
 
-          /** 把 decide() 的 reason 归成页面要显示的来源分类。 */
+          /** 把 decide() 的 reason 归成页面可读的来源分类。 */
           const sourceOf = reason => {
             if (reason === 'protected') return 'protected';
             if (reason.startsWith('tool override')) return 'tool';
@@ -130,11 +170,15 @@ export function mountApi(ctx, deps) {
           return ok(res, {
             ok: true,
             patched: s.patched,
+            // 补丁装不上时页面要说出真实原因；不带它，界面只能显示「未知原因」。
+            reason: s.reason,
             configPath,
             // true = 磁盘上的配置与启动时加载的不同，即「改了还没重启」。
-            // 此时页面上的隐藏数都是「重启后才会成立」的数字。
+            // false = 一致。null = 无法判定（配置读不出，没有可比对的基准）。
             stale,
-            problems: [...problems, ...s.problems],
+            // 两类来源可能重叠：磁盘现算的问题可能和启动时算的是同一条。
+            // 去重后仍然区分来源，页面才能说清「现在是坏的」还是「启动时是坏的」。
+            problems: mergeProblems(problems, s.problems),
             diagnostics: s.diagnostics,
             // 说明页半边的运行时事实（最近一次组装；未安装时 installed:false）。
             // texts 只给设置页用（编辑器要显示原文）；model 侧 status 会剥掉它。
@@ -151,6 +195,7 @@ export function mountApi(ctx, deps) {
                   originalDescription: e.description,
                   // 引擎的实际判定，页面开关以此为准
                   effective: verdict.action === 'drop' ? 'drop' : 'keep',
+                  // 为什么是这个判定：页面据此说明「被服务器开关关掉」还是「被保护」
                   source: sourceOf(verdict.reason),
                 };
               }),
@@ -261,7 +306,7 @@ export function mountApi(ctx, deps) {
         if (error?.code === 'EINVALID') return fail(res, 400, 'EINVALID', msg);
         // 请求体的 256KB 上限要说人话，不能把内部异常原样抛给用户
         if (msg === 'request body too large') {
-          return fail(res, 413, 'ETOOLARGE', '配置文件超过 256KB，请精简后再导入');
+          return fail(res, 413, 'ETOOLARGE', '导入内容超过 256KB，请精简后再导入');
         }
         log.warn('api error: ' + msg);
         return fail(res, 500, 'EINTERNAL', msg);

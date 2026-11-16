@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { mountApi, ROUTE_PATH } from '../api.js';
 import { ToolCatalog } from '../rules.js';
+import { hashText } from '../hash.js';
 
 /** 造一个假 ctx：捕获 webServer.register 的 handler。 */
 function makeCtx() {
@@ -286,9 +287,31 @@ test('api: 保护工具永远 effective=keep 且 source=protected', async () => 
 // stale：磁盘配置与启动时加载的不一致（改了还没重启）
 // ─────────────────────────────────────────────
 test('api: 配置未改动时 stale=false', async () => {
-  const { captured, dir, dispose } = setup();
+  const dir = mkdtempSync(join(tmpdir(), 'tool-keeper-api-'));
+  const configPath = join(dir, 'tool-keeper.json');
+  // 有基准才能判「一致」：先写一份盘上配置，再把它当作启动时的内容。
+  const seed = JSON.stringify({ servers: {}, tools: {}, rewrite: {} });
+  writeFileSync(configPath, seed);
+  const { ctx, captured } = makeCtx();
+  const dispose = mountApi(ctx, {
+    configPath,
+    catalog: new ToolCatalog(),
+    snapshot: () => ({
+      patched: true, configPath, problems: [], diagnostics: [],
+      loadedHash: hashText(seed),
+    }),
+    log: { info() {}, warn() {} },
+  });
   const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
   assert.equal(r.json.stale, false);
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: 没有启动指纹时 stale=null（说「不知道」，不说「一致」）', async () => {
+  const { captured, dir, dispose } = setup();
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  assert.equal(r.json.stale, null, '没有基准时不能谎称一致');
   dispose();
   rmSync(dir, { recursive: true, force: true });
 });
@@ -327,7 +350,7 @@ test('api: 磁盘配置与启动指纹不同时报 stale=true', async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
-test('api: 没有启动指纹时 stale=false（不瞎报）', async () => {
+test('api: 没有启动指纹时 stale=null，不是 false', async () => {
   const captured = { route: undefined };
   const dir = mkdtempSync(join(tmpdir(), 'tool-keeper-stale2-'));
   const configPath = join(dir, 'tool-keeper.json');
@@ -349,7 +372,8 @@ test('api: 没有启动指纹时 stale=false（不瞎报）', async () => {
   });
 
   const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
-  assert.equal(r.json.stale, false, '拿不到基准就不要声称过期');
+  // 拿不到基准时既不能声称过期，也不能声称一致——后一种会把「不知道」说成「没问题」。
+  assert.equal(r.json.stale, null, '没有基准要说「无法判定」，不能说成一致');
   dispose();
   rmSync(dir, { recursive: true, force: true });
 });

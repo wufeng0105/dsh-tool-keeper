@@ -187,8 +187,6 @@ window.__ModuleLoader__.load({
       });
     }
 
-    function num(n) { return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); }
-
     /**
      * 点击开关后应该写入的 `tools` 映射。
      *
@@ -598,12 +596,15 @@ window.__ModuleLoader__.load({
           ? h('p', { className: 'tw-note', 'data-tone': 'bad' }, props.error) : null,
         props.notice !== null && props.notice !== undefined
           ? h('p', { className: 'tw-note' }, props.notice) : null,
-        // stale 由服务端比对「磁盘配置」与「启动时加载的配置」得出，是持久事实，
-        // 不放在 React state 里——否则刷新一次提示就消失，用户看到的是「已生效」。
-        data.stale
+        // stale 三态：true 改了没重启 / false 一致 / null 无法判定。
+        // null 不能当成「一致」——那是把不知道说成没问题。
+        data.stale === null || data.stale === undefined
           ? h('p', { className: 'tw-note', 'data-tone': 'warn' },
-            '已保存。重启 DSH 后才生效——在此之前，模型仍然能看见并使用这些工具与它们的说明页。')
-          : null,
+            '无法判断配置是否已生效：启动时没能读到配置文件。下面的内容取自磁盘当前状态。')
+          : data.stale
+            ? h('p', { className: 'tw-note', 'data-tone': 'warn' },
+              '已保存。重启 DSH 后才生效——在此之前，模型仍然能看见并使用这些工具与它们的说明页。')
+            : null,
 
         /* 工具栏 */
         h('div', { className: 'tw-toolbar' },
@@ -666,7 +667,11 @@ window.__ModuleLoader__.load({
           ? h('p', { className: 'tw-status' },
             query !== ''
               ? '没有匹配「' + props.query + '」的工具。'
-              : '还没有捕获到任何工具。重启 DSH 后这里会列出全部工具。')
+              // 空列表有两种完全不同的成因，说成一句话就是在骗人：
+              // 补丁没装上是「重启多少次都不会有」，不是「重启后就有了」。
+              : data.patched === false
+                ? '拦截补丁没有装上，所以捕获不到任何工具。重启不会解决——请先看上面的原因。'
+                : '还没有捕获到任何工具。如果刚启动，重启 DSH 后这里会列出全部工具。')
           : h('div', { className: 'tw-groups' },
             groups.map(function (g) {
               return h(ToolGroup, {
@@ -879,16 +884,18 @@ window.__ModuleLoader__.load({
 
       /**
        * 服务器总开关：写 servers.<名>.enabled 的整块替换。
-       * 关 = enabled:false（整台取消注册，逐条规则不动）；开 = 删掉 enabled 字段，
-       * 底下的逐条隐藏/白名单原样生效。servers 里已有 keep 白名单的必须原样保留。
+       * 关 = enabled:false（整台取消注册，逐条规则不动）；
+       * 开 = 删掉 enabled 字段，条目里其它字段（rewrite）原样保留。
        */
       function onToggleServer(server, currentlyDisabled) {
         var next = Object.assign({}, data.rules.servers || {});
         var entry = Object.assign({}, next[server] || {});
         if (currentlyDisabled) delete entry.enabled;
         else entry.enabled = false;
-        // 空条目不落盘（baseline 是全空，别替用户留空壳）
-        if (entry.enabled === undefined && entry.keep === undefined) delete next[server];
+        // 空条目不落盘（baseline 是全空，别替用户留空壳）。
+        // 两个字段都要看：只看 enabled 会把带 rewrite 的条目一起删掉，
+        // 等于开一次服务器就丢掉它的说明页改写。
+        if (entry.enabled === undefined && entry.rewrite === undefined) delete next[server];
         else next[server] = entry;
         setBusy(true); setError(null);
         call({ op: 'set', servers: next }).then(function () {
@@ -962,7 +969,6 @@ window.__ModuleLoader__.load({
     exports.apply = apply;
     exports.inject = ['slots'];
     exports.__testing = {
-      num: num,
       nextToolsAfterToggle: nextToolsAfterToggle,
       nextServersAfterRewrite: nextServersAfterRewrite,
       View: ToolKeeperView,

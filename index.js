@@ -120,16 +120,6 @@ export function apply(ctx, config) {
       // 以免模型一句 status 就把每台服务器的整页原文倒进对话。
       texts: Object.fromEntries(instructionsState.originals instanceof Map ? instructionsState.originals : []),
     },
-    groups: [...catalog.groups()].map(([group, entries]) => ({
-      group,
-      entries: entries.map(e => ({
-        name: e.name,
-        server: e.server,
-        leaf: e.leaf,
-        protected: e.protected,
-        originalDescription: e.description,
-      })),
-    })),
   });
 
   provideStatus(ctx, snapshot);
@@ -239,7 +229,12 @@ function installPatch(ctx, rules, seen, catalog, missingParams, log) {
   };
 }
 
-/** 用可选服务把状态暴露出去，供界面或诊断读取。缺服务时静默跳过。 */
+/**
+ * 把状态暴露成宿主服务，供其它插件或诊断读取。
+ *
+ * 这是对外契约，不是内部实现——本仓库没有消费者，不代表别处没有。
+ * 缺 `provide` 能力时静默跳过（headless / 精简宿主），不影响过滤本身。
+ */
 function provideStatus(ctx, getter) {
   try {
     if (typeof ctx.provide === 'function') {

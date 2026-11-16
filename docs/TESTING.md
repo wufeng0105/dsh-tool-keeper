@@ -163,7 +163,7 @@ Slots.listSubTree({ root: 'settings.section' })
 node <plugin-kit>/skills/plugin-kit/scripts/preflight.mjs .
 ```
 
-稳态输出 **7 PASS / 0 FAIL / 2 UNVERIFIABLE**，两项的原因与结论见 [KNOWN-ISSUES.md](./KNOWN-ISSUES.md) 第十四节。**不要把 UNVERIFIABLE 写成 PASS。**
+稳态输出 **7 PASS / 0 FAIL / 2 UNVERIFIABLE**，两项的原因与结论见 [KNOWN-ISSUES.md](./KNOWN-ISSUES.md) 第八节。**不要把 UNVERIFIABLE 写成 PASS。**
 
 另外三项体检（升级 DSH 后必跑）：
 

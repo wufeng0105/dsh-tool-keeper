@@ -55,95 +55,21 @@
 
 ---
 
-## 七、`__proto__` 只在 `servers` 写入口被挡
-
-`rules.js:226-231` 的注释专门解释过「报成功但什么都没写」的后果，`tool.js:149` 也据此挡住了 `servers.<名>`。但另外两个写入口漏了：
-
-- `tool.js:199` `base.tools[name] = args.state`
-- `tool.js:230` `properties[param] = args.text`
-
-**实测**：`normalizeConfig({ tools: { "__proto__": "drop" } })` → `problems: []`、`toolOverrides.size: 0`；`rewrite.<工具>.properties` 写 `__proto__` 同样两类静默。调用方拿到 `ok: true`，磁盘上什么都没有。
-
-**这是本项目最不该有的缺陷**：它宣称要消灭「说了不成立的话」，却在自己的写入口制造了一次。
-
-**修法**：三处写入口统一走 `DANGEROUS_KEYS` 检查，命中即拒绝并说明原因。
-
----
-
-## 八、`rewrite.<工具> = ""` 静默把工具说明清空
-
-**实测**：`normalizeConfig({ rewrite: { "mcp__x__y": "" } })` → `problems: []`、键被视为已配置；`applyToDefinition` 返回 `description: ""`。
-
-**同一个「空」在两侧含义相反**：`servers.<名>.rewrite` 为空或纯空白时被当作未配置忽略（`rules.js:119-123`）；`rewrite.<工具>` 为空时被当作「生效并把说明抹掉」。
-
-**影响**：模型拿到一个没有说明的工具，全程无诊断。
-
-**修法**：二选一——工具侧也把空白当未配置，或保留语义但必须落一条诊断。
-
----
-
-## 九、`stale` 在配置读不出时永久失效
-
-`config.js:43` 在 seed 也失败时返回 `text: undefined` → `index.js:58` `hashText(undefined)` 得 `''` → `api.js:117-118` 要求 `loadedHash !== ''` → `stale` 恒为 `false`。
-
-**影响**：防「改了没重启被当已生效」是插件的招牌能力，它在最需要的时候安静关闭。
-
-**修法**：`loadedHash === ''` 时给独立状态（如 `stale: null` 表示无法判定），不要静默取 `false`。
-
----
-
-## 十、界面读一个永远不存在的字段
-
-`ui/client.js:588` 拼提示时用 `data.reason || '未知原因'`，但 `api.js` 的 `state` 响应里**没有 `reason`**（实测键为 `ok, patched, configPath, stale, problems, diagnostics, instructions, groups, rules`）。
-
-**影响**：补丁装不上时，界面永远显示「拦截补丁未安装：未知原因」，而 `index.js:110` 的 `snapshot().reason` 里其实有确切原因。用户被引导去查别的地方。
-
-**修法**：`api.js` 的 state 响应补 `reason: s.reason`。
-
----
-
-## 十一、空目录提示是一句确定的假话
-
-`ui/client.js:669`：`还没有捕获到任何工具。重启 DSH 后这里会列出全部工具。`
-
-若补丁装不上（`patched: false`），重启一百次也不会列出任何工具。两种完全不同的成因被说成一句确定的话。
-
-**修法**：按 `patched` 分流文案。
-
----
-
-## 十二、`problems` 双份拼装，且会长期挂着旧问题
-
-`api.js:137` `problems: [...problems, ...s.problems]`：`problems` 是磁盘现算，`s.problems` 是启动时算（含 `readError`）。
-
-**影响**：同一问题可能原样出现两次；更麻烦的是磁盘修好之后，启动期的旧问题仍挂在页面上——页面报出已经不存在的问题。
-
-**修法**：去重，或明确标注每条问题的来源（本次现算 / 启动时）。
-
----
-
-## 十三、死代码与过期注释
+## 七、死代码与过期注释
 
 | 项 | 位置 | 状态 |
-|---|---|---|
-| `applied` 数组 | `rules.js:293,315,317` | 只 push 不读；两个调用方都只取 `parameters`/`missing` |
-| `snapshot().groups` | `index.js:123-132` | 两个消费者都直接调 `catalog.groups()`，此映射白算 |
-| `provideStatus` / `ctx.provide('tool_keeper')` | `index.js:135,243-251` | 全仓无消费者，失败还被吞掉 |
-| `source` 字段 | `api.js:48,154` | UI 零引用 |
-| `entry.leaf` | `api.js:149` | UI 零引用 |
-| `entry.parameters` | `rules.js:389` | 写入后无人读；与 `rules.js:367`「只留存文本与归属」的自我描述矛盾 |
-| `catalog.names()` | `rules.js:419` | 无调用 |
-| `num()` | `ui/client.js:190` | 仅 `__testing` 引用 |
-| 「三条边界」紧接「两条边界」 | `rules.js:23-24` | 空壳标题，自相矛盾 |
-| 优先级注释仍写「服务器白名单」 | `rules.js:241` | 白名单已于 0.4.0 删除 |
-| `keep` 残影 | `ui/client.js:891` | 判 `entry.keep`，但 `api.js` 从不返回该字段，条件恒为 undefined |
-| 256KB 文案指错对象 | `api.js:264` | 限制的是**请求体**，文案说「配置文件」 |
-| `renameSync` 静默降级 | `config.js:100-107` | Windows 目标被占用时改为直接写，可能写坏配置且无日志 |
-| 空白「不落盘」契约无强制 | `rules.js:123` / `api.js:197` | 注释称调用方负责，实测 `{rewrite:" "}` 能落盘成死键 |
+| --- | --- | --- |
+| `applied` 数组 | `rules.js` `rewriteParameterDescriptions` | 只 push 不读。留着无害，删了得改两处返回点；暂留 |
+| `renameSync` 静默降级 | `config.js` `writeConfig` | Windows 目标被占用时改为直接写，可能写坏配置且无日志 |
+| 空白「不落盘」契约无强制 | `rules.js` / `api.js` | 注释称调用方负责，实测 `{rewrite:" "}` 仍能落盘成死键 |
+
+已清理：`snapshot().groups`、`provideStatus`（**保留**——它是对外服务契约，见下）、`source`（**保留**——API 契约的一部分）、`num()`、`entry.leaf`、`entry.parameters`、`catalog.names()` 的注释矛盾、「三条边界」空壳标题、过期白名单注释、256KB 文案。
+
+**`provideStatus` 与 `source` 为什么保留**：首轮清理时我把它们当死代码删了，240 条测试立刻红了 18 条。复查发现——`ctx.provide('tool_keeper')` 是插件的对外服务契约（本仓库无消费者不等于别处没有），`source` 是 `state` 响应的一部分、被界面测试依赖。**「本仓库没人用」不等于「契约允许删」。** 这属于我判断失误，记录在此以免重犯。
 
 ---
 
-## 十四、preflight 有两项长期 UNVERIFIABLE
+## 八、preflight 有两项长期 UNVERIFIABLE
 
 稳态输出 **7 PASS / 0 FAIL / 2 UNVERIFIABLE**。那两项只能在真机上判，判法与结论见 [TESTING](./TESTING.md) 的验收表：
 

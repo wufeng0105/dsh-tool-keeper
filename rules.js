@@ -20,7 +20,6 @@
  *
  *   保护名单  >  服务器总开关  >  单工具规则
  *
- * 三条边界：
  * 两条边界：
  * - 服务器总开关是「整台取消注册」的物理闸，压过一切逐条规则（关 = 一个不剩）。
  * - 单工具规则是唯一的选择层：没明确 drop 的默认 keep；keep 与 rewrite 正交
@@ -167,7 +166,14 @@ export function normalizeConfig(raw) {
           continue;
         }
         if (typeof value === 'string') {
-          // 字符串是对象形态的简写：只改工具说明
+          // 字符串是对象形态的简写：只改工具说明。
+          // 空串/纯空白 = 未配置，与 servers.<名>.rewrite 同一口径：
+          // 用户写 "" 是想「别改了」，不是想把工具说明抹成空白；
+          // 后者会让模型拿到一个没有说明的工具，且不会留下任何痕迹。
+          if (value.trim() === '') {
+            problems.push(`rewrite.${name} 是空字符串，已忽略（要撤销改写请删掉这个键）`);
+            continue;
+          }
           empty.rewrites.set(name, { description: value, properties: new Map() });
           continue;
         }
@@ -180,6 +186,9 @@ export function normalizeConfig(raw) {
         if (value.description !== undefined) {
           if (typeof value.description !== 'string') {
             problems.push(`rewrite.${name}.description 必须是字符串`);
+          } else if (value.description.trim() === '') {
+            // 同字符串形态：空 description 是想「别改说明」，不是想抹成空白
+            problems.push(`rewrite.${name}.description 是空字符串，已忽略（要撤销请删掉这个字段）`);
           } else {
             entry.description = value.description;
           }
@@ -189,8 +198,18 @@ export function normalizeConfig(raw) {
             problems.push(`rewrite.${name}.properties 必须是对象`);
           } else {
             for (const [param, text] of Object.entries(value.properties)) {
+              // 危险键必须挡住：写 properties.__proto__ 命中的是原型对象而不是参数，
+              // 赋值不生效、又不落入 missing，等于静默谎报。
+              if (isDangerousKey(param)) {
+                problems.push(`rewrite.${name}.properties.${param} 不是合法的参数名，已忽略`);
+                continue;
+              }
               if (typeof text !== 'string') {
                 problems.push(`rewrite.${name}.properties.${param} 必须是字符串`);
+                continue;
+              }
+              if (text.trim() === '') {
+                problems.push(`rewrite.${name}.properties.${param} 是空字符串，已忽略（要撤销请删掉这个字段）`);
                 continue;
               }
               entry.properties.set(param, text);
@@ -238,7 +257,7 @@ function isDangerousKey(key) {
 /**
  * 判定一个工具该怎么处理。
  *
- * 优先级：保护名单 > 服务器总开关 > 单工具规则 > 服务器白名单。
+ * 优先级：保护名单 > 服务器总开关 > 单工具规则。
  * 判定只看配置与工具名，不依赖宿主当前有哪些服务器（见文件头）。
  *
  * @param name - 工具的注册名
@@ -302,6 +321,13 @@ export function rewriteParameterDescriptions(parameters, overrides) {
 
   let next;
   for (const [param, text] of overrides) {
+    // 只能命中真正的自有参数。不能只判 `properties[param]` 是不是对象——
+    // `__proto__` 会取到 Object.prototype（一个对象），于是被当成命中，
+    // 而随后的赋值改的是原型链，不落任何自有属性：静默无效且不报缺失。
+    if (!Object.hasOwn(properties, param)) {
+      missing.push(param);
+      continue;
+    }
     const node = properties[param];
     if (node === null || typeof node !== 'object') {
       missing.push(param);
@@ -379,7 +405,6 @@ export class ToolCatalog {
     const name = definition === null || definition === undefined ? undefined : definition.name;
     if (typeof name !== 'string' || name === '' || this.entries.has(name)) return;
     const description = typeof definition.description === 'string' ? definition.description : '';
-    const parameters = definition.parameters;
     const parts = splitMcpName(name);
     this.entries.set(name, {
       name,
@@ -387,7 +412,6 @@ export class ToolCatalog {
       server: parts === undefined ? undefined : parts.server,
       leaf: parts === undefined ? undefined : parts.leaf,
       description,
-      parameters,
       protected: isProtected(name),
     });
   }
