@@ -148,8 +148,6 @@ export function mountApi(ctx, deps) {
                   server: e.server,
                   leaf: e.leaf,
                   protected: e.protected,
-                  chars: e.originalChars,
-                  descChars: e.originalDescChars,
                   originalDescription: e.description,
                   // 引擎的实际判定，页面开关以此为准
                   effective: verdict.action === 'drop' ? 'drop' : 'keep',

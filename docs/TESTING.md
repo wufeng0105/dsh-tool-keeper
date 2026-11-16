@@ -18,7 +18,7 @@ npm test
 | `tests/rules.test.js` | 纯函数核心：配置解析（含 servers.<名>.rewrite）、判定优先级、参数改写、诊断 |
 | `tests/index.test.js` | 宿主半：补丁安装与还原、失败可见、冻结服务 |
 | `tests/instructions.test.js` | 说明页半边：段落移除/改写/原文捕获、名单重写、格式漂移 fail-open、监听器安装/摘除 |
-| `tests/tool.test.js` | 模型工具 `tool_keeper` 的六个 action |
+| `tests/tool.test.js` | 模型工具 `tool_keeper` 的六个 action（含 `server` 的开关与说明页改写） |
 | `tests/api.test.js` | HTTP 接口：同源校验、写前校验、指纹比对 |
 | `tests/ui.test.js` | 设置页：用 react 离线渲染真实 HTML 并断言结构 |
 
@@ -53,6 +53,8 @@ const openBtn = html.match(/<button[^>]*aria-expanded="true"[^>]*>mcp__tinyfish_
 每改一条断言，就故意改坏它守护的实现，确认变红后还原。
 交付说明里列出本轮的变异组；不写「N 个变异全捕获」这类无法当场复核的数字。
 
+**变异必须真的改变行为。** 往代码里加一句注释、改个无关的常量，测试当然还是绿的——那不是断言无效，是变异无效。判断方法：变异后先想「这条断言该红吗」，该红却没红才是问题。
+
 ---
 
 ## 三、真机验收
@@ -82,9 +84,11 @@ const openBtn = html.match(/<button[^>]*aria-expanded="true"[^>]*>mcp__tinyfish_
 | A9 | 配置损坏不锁死 | 写坏成半截 JSON → DSH 正常启动、集合 == 基线、界面报错 |
 | A10 | 服务器开关 | 关某台 → 该台工具全部消失；开回来 → 单工具规则原样生效（可见集合与关闭前一致） |
 | A11 | 插件级停用 | 在 DSH 插件页停用 → 不装补丁、全部工具放行 |
-| B7 | 说明页半边的工具侧对照 | 关某台 MCP → 新会话的持久化日志（`~/.dsh/` 下 sessions 目录）里 system 段不含 `## MCP resource servers` 名单里的该服务器名、也不含它的说明段；同一会话 `listTools` 该台工具全消失 |
-| B8 | 开回来两半一起恢复 | 重新启用 → 新会话里名单恢复含该名字、说明段回来，工具集合与关闭前一致 |
-| B9 | 服务器说明页改写 | 给开着的服务器写 `servers.<名>.rewrite` → 重启 → **新会话** JSONL 的 `system/message` 事件里：含改写文本、不含 `### MCP server: <名>`（整段替换的直接后果）；清空后重启 → 标题与原文回来 |
+| B1 | 说明页过滤（工具侧对照） | 关某台 MCP → 新会话的 `system/message` 里既没有它的说明段，名单数组里也没有它的名字；同一会话 `listTools` 该台工具全消失 |
+| B2 | 两半一起恢复 | 重新启用 → 新会话里名单恢复含该名字、说明段回来，工具集合与关闭前一致 |
+| B3 | 服务器说明页改写 | 写 `servers.<名>.rewrite` → 重启 → **新会话** `system/message` 里：含改写文本、不含 `### MCP server: <名>`（整段替换的直接后果）；清空后重启 → 标题与原文回来 |
+
+B1–B3 的取数位置都是新会话 JSONL 的 `system/message` 事件（`data.message.content` 里的 text 块），不是 LLM 请求体里的 tools。**必须新会话**：宿主恢复旧会话时会重放旧内容，旧日志的时间戳会被刷新，拿它判会误报。
 
 ### 快速自查用的探测命令
 
@@ -149,7 +153,7 @@ Slots.listSubTree({ root: 'settings.section' })
 
 把开关显示改成读 `effective` 之后，写回路径若还读配置里的条目，被服务器规则关掉的行在配置里没有条目，点开关会写成 `drop`（再关一次），从界面永远打不开那类工具。
 
-**防线**：`nextToolsAfterToggle` 抽成纯函数单独测；断言里明确写「引擎判定为 drop 时，点击意图是打开，必须写 keep」。读写两侧必须一起检查。
+**防线**：写配置的两个交互都抽成纯函数单独测——`nextToolsAfterToggle`（工具开关）与 `nextServersAfterRewrite`（服务器说明页改写，含「条目全空才删整条」）。断言里明确写「引擎判定为 drop 时，点击意图是打开，必须写 keep」。读写两侧必须一起检查。
 
 ---
 
@@ -159,14 +163,15 @@ Slots.listSubTree({ root: 'settings.section' })
 node <plugin-kit>/skills/plugin-kit/scripts/preflight.mjs .
 ```
 
-稳态输出 **7 PASS / 0 FAIL / 2 UNVERIFIABLE**。
+稳态输出 **7 PASS / 0 FAIL / 2 UNVERIFIABLE**，两项的原因与结论见 [KNOWN-ISSUES.md](./KNOWN-ISSUES.md) 第七节。**不要把 UNVERIFIABLE 写成 PASS。**
 
-那两项不是「快通了」，是只能在真机上判，且已判过：
+另外三项体检（升级 DSH 后必跑）：
 
-- **slot 注册形态**：真机确认 occupants 里有 `active: true`，同宿主已上架插件用逐字相同写法
-- **完整插件集共存**：日常 profile 重启正常，一次性 profile 的完整流程未跑
-
-细节见 [KNOWN-ISSUES.md](./KNOWN-ISSUES.md)。**不要把 UNVERIFIABLE 写成 PASS。**
+```bash
+node <plugin-kit>/scripts/recheck.mjs --self-test   # 先证明它会红
+node <plugin-kit>/scripts/recheck.mjs --touchpoints touchpoints.json --snapshot host-snapshot.json
+node <plugin-kit>源码仓/scripts/reextract.mjs --check   # dsh-doc 副本是否过期
+```
 
 ---
 

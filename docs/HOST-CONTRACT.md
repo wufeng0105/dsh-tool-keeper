@@ -43,7 +43,7 @@
 | 渲染只取 text | `renderPrompt` 对每段取 text（`interpolate === false` 时原样），丢弃空串段，用 `'\n\n'` 拼接；`name` 不参与渲染，也不产生标题 | `dsh-system-prompt/src/index.ts:297-302` |
 | 服务器名单段 | 名字 `mcp-resource-servers`；正文 = `'## MCP resource servers\n\nUse … as the server argument: ' + JSON.stringify(排序后的名字数组) + '.'`（**数组后有尾句点**） | `dsh-mcp-resources/src/index.ts:61-73` |
 
-**推论**：说明页过滤只能做「移除段 / 重写名单」，做不到「检测完整预设」；后者如实报告边界（见 KNOWN-ISSUES），不冒充。
+**推论**：说明页处理只能做「移除段 / 替换段文本 / 重写名单」，做不到「检测完整预设」。完整预设这条边界如实报告（[KNOWN-ISSUES](./KNOWN-ISSUES.md) 五），不冒充。
 
 ---
 
@@ -158,7 +158,7 @@ ctx.inject(['webServer'], (inner) => {
 
 | 用途 | patch 里的 `name` | 解析规则 |
 |---|---|---|
-| 宿主半（`index.js`） | 包名 `dsh-tool-keeper` | **必须与 `package.json` 的 `name` 逐字一致** |
+| 宿主半（`index.js`） | 包名 `@wufeng0105/dsh-tool-keeper` | **必须与 `package.json` 的 `name` 逐字一致**；改包名时这行一起改 |
 | 浏览器半（`ui/`） | 相对路径 `./ui/index.js` | 相对**本包目录**解析，指向一个**自己的 `package.json`** |
 
 浏览器半要独立成包（声明 `dsh.client.platform: "web"` + `exports["./client"]`），因为宿主只认「包的精确包名」或「路径里最近的 `package.json`」，裸子路径会被当成非包跳过。
