@@ -73,7 +73,7 @@ export function isProtected(name) {
 
 /**
  * 归一化配置。非法输入不抛异常 —— 按最宽松解释处理并记入 problems，
- * 因为一个坏配置绝不能中断工具注册链（docs/DESIGN.md 的 R4）。
+ * 因为一个坏配置绝不能中断工具注册链（DESIGN「七、可靠性与已知风险」第 4 条）。
  *
  * @param raw - 来自 tool-keeper.json 的原始对象
  * @returns {{ rules: object, problems: string[] }} 归一化后的规则与问题清单
