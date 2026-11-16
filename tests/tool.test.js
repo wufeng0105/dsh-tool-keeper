@@ -428,3 +428,13 @@ test('tool: 打开服务器不得把 rewrite 删掉（P0 回归）', async () =>
   assert.equal(saved.servers.context7.enabled, undefined);
   rmSync(dir, { recursive: true, force: true });
 });
+
+test('tool: server text 纯空白等同清除（与 normalizeConfig 同口径）', async () => {
+  const { definition, configPath, dir } = setupWithConfig({
+    servers: { x: { rewrite: '旧改写' } }, tools: {}, rewrite: {},
+  });
+  await definition.execute({ action: 'server', server: 'x', text: '   ' });
+  const saved = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.equal(saved.servers.x, undefined, '纯空白不落盘，条目空了就删整条');
+  rmSync(dir, { recursive: true, force: true });
+});

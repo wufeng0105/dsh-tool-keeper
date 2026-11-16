@@ -192,7 +192,7 @@ present  todo_write  ask_user_question  tool_keeper  skill
 
 ```bash
 npm install    # 只有测试需要（react / react-dom 用于离线渲染页面）
-npm test       # 234 条测试
+npm test       # 236 条测试
 ```
 
 技术栈一句话：宿主半边拦截 DSH 的工具注册入口，浏览器半边是设置页，两者通过本地 HTTP 接口通信。

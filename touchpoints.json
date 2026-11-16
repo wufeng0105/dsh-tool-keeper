@@ -161,7 +161,7 @@
         ]
       },
       "status": "verified",
-      "verifiedBy": "L1：2026-11-17 cordis_inspect_query host Event.listEvents（无 input 目录形态）返回 mode=waterfall 与完整签名",
+      "verifiedBy": "L1：2026-11-17 cordis_inspect_query host Event.listEvents（无 input 目录形态）返回 mode=waterfall 与完整签名；L1 真机：0.5.0 起 state.instructions.installed=true，B7/B8 通过",
       "fallback": "installed:false + 诊断「说明页过滤未安装」；工具半边不受影响（fail-open）"
     },
     {
@@ -175,8 +175,8 @@
         "rationale": "段落名在运行时由 dsh-mcp-client 注册，不启动宿主无法机判当前版本仍用 mcp:<server>",
         "alternative": "L3 源码：dsh-mcp-client/src/server-context.ts registerServerContext 注册 name='mcp:'+server；真机 B7/B9：新会话 system/message 不含停用服务器的段、改写后不含该服务器的段"
       },
-      "status": "source-checked",
-      "verifiedBy": "L3：dsh-mcp-client/src/server-context.ts（registerServerContext）；真机 B7 已过（0.5.0），B9 待 0.6.0 装机后执行",
+      "status": "verified",
+      "verifiedBy": "L3 源码：dsh-mcp-client/src/server-context.ts（registerServerContext）；L1 真机：B7 通过（停用服务器不再出现在新会话 system/message），B9 通过（改写后该服务器整段消失于新会话日志）",
       "fallback": "约定漂移时 removed/rewritten 为空 + 诊断「未见其说明段 / 改写本次未生效」，界面不冒充「已隐藏/已生效」"
     },
     {
@@ -190,8 +190,8 @@
         "rationale": "正文拼接发生在连接建立时，静态机判不了；也没有 inspect 接口能读到某台服务器的 instructions 原文",
         "alternative": "L3 源码：dsh-mcp-client/src/connection.ts:316-317（text = '### MCP server: ' + 名 + '\\n\\n' + 说明；无说明为 ''）；真机 B9：改写后新会话不含 `### MCP server: <名>`"
       },
-      "status": "source-checked",
-      "verifiedBy": "L3：dsh-mcp-client/src/connection.ts:316-317；单测覆盖整段替换语义；真机 B9 待执行",
+      "status": "verified",
+      "verifiedBy": "L3 源码：dsh-mcp-client/src/connection.ts:316-317（标题在正文里）；L1 真机：B9 通过——改写后新会话 system/message 里既没有 `### MCP server: context7`，也没有官方原文",
       "fallback": "若标题不在正文里，改写只会替换正文而标题保留——行为仍可用，但 README 的描述会过期，需同步文档"
     },
     {

@@ -903,3 +903,9 @@ test('ui: nextServersAfterRewrite 四种情形', () => {
   f(src, 'x', '新');
   assert.deepEqual(src, { x: { rewrite: '旧' } });
 });
+
+test('ui: nextServersAfterRewrite 把纯空白当清除', () => {
+  const { mod } = loadUi();
+  const J = v => JSON.parse(JSON.stringify(v));
+  assert.deepEqual(J(mod.__testing.nextServersAfterRewrite({ x: { rewrite: '旧' } }, 'x', '   ')), {});
+});

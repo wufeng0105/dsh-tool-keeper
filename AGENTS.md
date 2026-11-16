@@ -50,7 +50,7 @@
 
 ## 交付前
 
-1. `npm test` —— 234 条，全绿
+1. `npm test` —— 236 条，全绿
 2. `node <plugin-kit包>/skills/plugin-kit/scripts/preflight.mjs <项目根>` —— 0 FAIL
 3. **改断言就必须做变异测试**：故意改坏实现，确认变红，再还原。
 4. **升级 DSH 后跑体检三件套**（缺一不可）：

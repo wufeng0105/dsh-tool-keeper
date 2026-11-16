@@ -67,7 +67,8 @@ window.__ModuleLoader__.load({
       '.tw-groups>.tw-group:first-child:last-child{border-radius:var(--dsw-radius-sm,8px)}',
       /* 标题行高必须等于工具行实际高度（34px 图标块 + 12px 行内边距 = 46px）：
          折叠卡与展开行在同一竖列里堆叠，一高一矮节奏就断了。 */
-      /* 头部容器：折叠按钮占满剩余宽度，总开关独立在最右。行高仍与工具行一致。 */
+      /* 头部容器：三列网格（标题 | 开关 | 编辑）。行高仍与工具行一致（46px）。
+         不要退回 flex：第三个控件在 flex 下不参与宽度分配，会撑出卡片右缘。 */
       /* 头部用网格而不是 flex：右侧永远只有「开关 + 编辑」两个固定宽度的格子，
          标题与状态占剩余宽度并自行省略。flex 下第三个控件会撑出卡片右缘（历史 bug）。 */
       '.tw-groupHeader{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:0;padding:0 10px 0 0}',
@@ -209,14 +210,14 @@ window.__ModuleLoader__.load({
     /**
      * 改写某台服务器的说明页后应写入的 `servers` 映射。
      *
-     * 只动一个字段：`rewrite`。空串 = 恢复原样（删字段）；条目里三个字段都空才删整条
-     * （否则「打开服务器」会顺手把改写删掉，这是 0.5.0 的既有缺陷）。
+     * 只动一个字段：`rewrite`。空串/纯空白 = 恢复原样（删字段，与 normalizeConfig 同口径）；
+     * 条目里三个字段都空才删整条（否则「打开服务器」会顺手把改写删掉，这是 0.5.0 的既有缺陷）。
      * 抽成纯函数：这是唯一写服务器说明的交互，必须能单独测。
      */
     function nextServersAfterRewrite(servers, server, text) {
       var next = Object.assign({}, servers || {});
       var entry = Object.assign({}, next[server] || {});
-      if (text === '') delete entry.rewrite; else entry.rewrite = text;
+      if (text.trim() === '') delete entry.rewrite; else entry.rewrite = text;
       if (entry.enabled === undefined && entry.rewrite === undefined) delete next[server];
       else next[server] = entry;
       return next;
@@ -574,7 +575,8 @@ window.__ModuleLoader__.load({
       var serverRewrites = {};
       Object.keys(serverEntries).forEach(function (n) {
         var e = serverEntries[n];
-        if (e && typeof e.rewrite === 'string' && e.rewrite !== '') serverRewrites[n] = e.rewrite;
+        // 纯空白不算改写（与 normalizeConfig 同口径），否则界面会把死键当配置显示
+        if (e && typeof e.rewrite === 'string' && e.rewrite.trim() !== '') serverRewrites[n] = e.rewrite;
       });
       var serverTexts = (data.instructions && data.instructions.texts) || {};
       var rewrittenServers = (data.instructions && data.instructions.rewritten) || [];

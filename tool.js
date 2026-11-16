@@ -69,7 +69,8 @@ export function registerTool(ctx, options) {
         server: { type: 'string', description: 'MCP 服务器名（action=server 时必填）。' },
         enabled: {
           type: 'boolean',
-          description: 'action=server：true 打开整台、false 关闭整台（说明页随开关一并隐藏/恢复）。只动"上不上架"这一层，不碰单个工具开关。',        },
+          description: 'action=server：true 打开整台、false 关闭整台（说明页随开关一并隐藏/恢复）。只动"上不上架"这一层，不碰单个工具开关。',
+        },
         name: { type: 'string', description: '完整工具名，如 mcp__tinyfish__search 或 read（action=tool/rewrite 时必填）。' },
         state: {
           type: 'string',
@@ -179,7 +180,9 @@ export function registerTool(ctx, options) {
           if (args.enabled) delete entry.enabled; else entry.enabled = false;
         }
         if (hasText) {
-          if (args.text === '') delete entry.rewrite; else entry.rewrite = args.text;
+          // 纯空白等同「没写」：normalizeConfig 也这么看，两边必须一致，
+          // 否则会落一条永远不生效的死键。
+          if (args.text.trim() === '') delete entry.rewrite; else entry.rewrite = args.text;
         }
         // 只有三个字段都空才删整条——否则「打开服务器」会顺手把改写删掉
         if (entry.enabled === undefined && entry.rewrite === undefined) delete base.servers[server];
@@ -187,7 +190,7 @@ export function registerTool(ctx, options) {
         writeConfig(configPath, base);
         const done = [];
         if (hasEnabled) done.push(args.enabled ? '已打开整台服务器' : '已关闭整台服务器');
-        if (hasText) done.push(args.text === '' ? '已清除说明页改写' : '已改写说明页');
+        if (hasText) done.push(args.text.trim() === '' ? '已清除说明页改写' : '已改写说明页');
         return {
           ok: true,
           server,
