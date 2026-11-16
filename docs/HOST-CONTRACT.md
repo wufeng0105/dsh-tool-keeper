@@ -18,6 +18,31 @@
 
 判不了的时候先怀疑自己的查法，不要急着写「宿主不支持」；一句错误的「宿主限制」会污染整条证据链。
 
+事件目录用**无 input** 形态查（rc.3 实测 `input={event:<name>}` 被拒，报 `"input" must be an object`；目录里每条带完整签名，够用）：
+
+```js
+{ platform: 'host', provider: 'Event', method: 'listEvents' }
+```
+
+---
+
+## 系统提示词组装（说明页半边）
+
+| 事实 | 结论 | 出处 |
+|---|---|---|
+| 接缝事件 | `'system-prompt/assemble'`，mode=waterfall；签名 `(this: Scoped<SystemPrompt>, assembly: PromptPresentation, context: AssembleContext, next: () => Promise<PromptPresentation>) => Promise<PromptPresentation>` | L1：2026-11-17 `cordis_inspect_query` host `Event.listEvents` 目录 |
+| 返回文本权威 | 监听器返回的 presentation 就是最终组装结果；先 `next()` 拿上游再改 | `dsh-system-prompt/src/index.ts:688`（assemble 用 waterfall 返回值） |
+| 上游基线返回同一对象 | 宿主自己的基线监听器原样返回 assembly，所以「返回新对象 + 新 sections」不会丢上游字段 | `dsh-system-prompt/src/index.ts:684-686` |
+| 监听器顺序与卸载 | waterfall 外层先跑；`ctx.on` 返回 disposer，作用域销毁自动摘除 | `cordis/src/events.ts:246-261,263-269` |
+| 不需要 inject | `ctx.on` 不声明服务依赖；根作用域监听器收到**所有**会话（含子代理）的组装 | `dsh-scope/src/index.ts:175-176` |
+| 空段不渲染 | 渲染时过滤 `text === ''` 的段 → 名单段剔空置 '' 即整段消失 | `dsh-system-prompt/src/index.ts:297-302` |
+| complete 段不可观测 | waterfall 里的 `AssembledSection` 只有 name/text/interpolate（complete 标志被剥掉）；complete 段在 waterfall **之后**无条件恢复 → 完整提示词预设场景本插件滤不动，也检测不到 | `dsh-system-prompt/src/index.ts:667-672,693` |
+| persona-prefix 恒存在 | 构造器总是注册 `deployment:persona-prefix`（text 可为 ''）；dsh-persona 仅在 `config.complete` 时另注册 scoped 同名 complete 段 → 「只有一个 persona-prefix 段」之类的启发式检测是错的 | `dsh-system-prompt/src/index.ts:463-468`；`dsh-persona/src/index.ts:62-68` |
+| 服务器说明段 | 名字 `mcp:<server>`，order 3100，interpolate:false，text 取 `connection.instructions()` | `dsh-mcp-client/src/server-context.ts` registerServerContext |
+| 服务器名单段 | 名字 `mcp-resource-servers`；正文 = `'## MCP resource servers\n\nUse … as the server argument: ' + JSON.stringify(排序后的名字数组) + '.'`（**数组后有尾句点**） | `dsh-mcp-resources/src/index.ts:61-73` |
+
+**推论**：说明页过滤只能做「移除段 / 重写名单」，做不到「检测完整预设」；后者如实报告边界（见 KNOWN-ISSUES），不冒充。
+
 ---
 
 ## 工具注册

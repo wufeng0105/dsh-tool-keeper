@@ -1,13 +1,13 @@
 {
   "_comment": "dsh-tool-keeper 的宿主触点清单。host 为本机实跑版本；每条都可在升级后由 recheck.mjs 复检。probe.kind=none 的条目必须写明「为什么机器判不了」和「人工/行为替代证据」，不得含糊。结构依据 plugin-kit/assets/touchpoints.sample.json。",
   "host": "0.2.2-rc.3",
-  "checkedAt": "2026-11-14",
+  "checkedAt": "2026-11-17",
   "touchpoints": [
     {
       "id": "svc.tools",
       "surface": "service",
       "ref": "ctx.get('tools')",
-      "code": "index.js:285（installPatch 取服务）、index.js:368（makeLogger 取 logger）",
+      "code": "index.js installPatch（取服务）、index.js makeLogger（取 logger）",
       "why": "拦截 tools.register 的唯一入口；拿不到服务时补丁装不上，走 fail-open",
       "probe": {
         "kind": "service",
@@ -26,7 +26,7 @@
       "id": "svc.webServer.register",
       "surface": "service",
       "ref": "webServer.register(route)",
-      "code": "api.js:331（ctx.inject(['webServer'], cb) 内调用）",
+      "code": "api.js mountApi（ctx.inject(['webServer'], cb) 内调用）",
       "why": "设置页 HTTP API 的挂载点；headless 无此服务，必须走运行期可选注入",
       "probe": {
         "kind": "service",
@@ -44,7 +44,7 @@
       "id": "svc.logger",
       "surface": "service",
       "ref": "ctx.get('logger')",
-      "code": "index.js:368（makeLogger）",
+      "code": "index.js makeLogger",
       "why": "统一日志出口；拿不到就退回 console，不影响过滤本身",
       "probe": {
         "kind": "none",
@@ -57,7 +57,7 @@
       "id": "inject.tools",
       "surface": "package",
       "ref": "inject:tools",
-      "code": "index.js:41",
+      "code": "index.js inject 声明",
       "why": "tools 是硬依赖；写错服务名插件永远 pending，宿主判定 web 启动失败",
       "probe": {
         "kind": "package",
@@ -65,16 +65,16 @@
         "path": [
           "name"
         ],
-        "equals": "dsh-tool-keeper"
+        "equals": "@wufeng0105/dsh-tool-keeper"
       },
       "status": "verified",
-      "fallback": "n/a（package 探针顺带锁包名：0.3.17 改成 dsh-tool-keeper 后不得回退到 @local/）"
+      "fallback": "n/a（package 探针顺带锁包名：上架后为 @wufeng0105/dsh-tool-keeper，不得回退到无作用域名或 @local/）"
     },
     {
       "id": "slot.settings.section",
       "surface": "slot",
       "ref": "ctx.slots.inject('settings.section', ...)",
-      "code": "ui/client.js:701",
+      "code": "ui/client.js settings.section 注册（order 50）",
       "why": "设置页入口。2026-11-10 同类写法出过「设置页看不到」的事故，必须能机判",
       "probe": {
         "kind": "none",
@@ -88,7 +88,7 @@
       "id": "sym.cordis.original",
       "surface": "package",
       "ref": "Symbol.for('cordis.original')",
-      "code": "index.js:47",
+      "code": "index.js ORIGINAL 常量 / installPatch",
       "why": "traceable 代理把真实目标存在这个 symbol 下，补丁必须落到真实服务上",
       "probe": {
         "kind": "none",
@@ -144,6 +144,55 @@
       },
       "status": "verified",
       "fallback": "约定漂移时规则整体失效但不会误杀：工具名解析不出 server 就按内置工具处理（不套服务器规则），同时诊断会报「条目匹配不到工具」"
+    },
+    {
+      "id": "event.system-prompt-assemble",
+      "surface": "event",
+      "ref": "ctx.on('system-prompt/assemble', handler)",
+      "code": "instructions.js 的 installInstructionsFilter",
+      "why": "说明页半边的唯一接缝：waterfall 返回文本权威，先 next() 再过滤 sections。mode 若变（emit/serial）或签名变，过滤装不上或装错",
+      "probe": {
+        "kind": "event",
+        "event": "system-prompt/assemble",
+        "mode": "waterfall",
+        "signatureIncludes": [
+          "assembly: PromptPresentation",
+          "next: () => Promise<PromptPresentation>"
+        ]
+      },
+      "status": "verified",
+      "verifiedBy": "L1：2026-11-17 cordis_inspect_query host Event.listEvents（无 input 目录形态）返回 mode=waterfall 与完整签名",
+      "fallback": "installed:false + 诊断「说明页过滤未安装」；工具半边不受影响（fail-open）"
+    },
+    {
+      "id": "convention.mcp-section-name",
+      "surface": "convention",
+      "ref": "系统提示词段落名 mcp:<server>",
+      "code": "instructions.js 的 filterSections（name.startsWith('mcp:')）",
+      "why": "服务器说明段的命名约定。改名则整段移除失效；fail-open 保证不误杀，但开关的说明页半边静默失效",
+      "probe": {
+        "kind": "none",
+        "rationale": "段落名在运行时由 dsh-mcp-client 注册，不启动宿主无法机判当前版本仍用 mcp:<server>",
+        "alternative": "L3 源码：dsh-mcp-client/src/server-context.ts registerServerContext 注册 name='mcp:'+server；真机 B7：新会话 system/message 不含 mcp:<停用服务器> 段"
+      },
+      "status": "source-checked",
+      "verifiedBy": "L3：dsh-mcp-client/src/server-context.ts（registerServerContext）；真机 B7 待 0.5.0 装机后执行",
+      "fallback": "约定漂移时 removed 为空 + 诊断「未见其说明段」，界面不冒充「已隐藏」"
+    },
+    {
+      "id": "convention.mcp-resource-servers-text",
+      "surface": "convention",
+      "ref": "名单段 mcp-resource-servers 正文格式",
+      "code": "instructions.js 的 rewriteList（锚点 'as the server argument: ' + JSON 数组 + 尾句点）",
+      "why": "名单段正文是宿主拼的字符串，锚点或数组格式漂移则剔除失效；解析失败必须原样保留 + 诊断",
+      "probe": {
+        "kind": "none",
+        "rationale": "正文格式是 dsh-mcp-resources 的运行时拼接结果，静态机判不了漂移",
+        "alternative": "L3 源码：dsh-mcp-resources/src/index.ts L61-73（'## MCP resource servers' + 'as the server argument: ' + JSON.stringify(sortedNames) + '.'）；真机 B7：新会话名单数组不含停用名字"
+      },
+      "status": "source-checked",
+      "verifiedBy": "L3：dsh-mcp-resources/src/index.ts L61-73；单测 B2/B3 覆盖格式与漂移；真机 B7 待装机后执行",
+      "fallback": "解析失败原样保留 + 中文诊断；剔空整段置 ''（宿主渲染过滤空段）"
     }
   ]
 }

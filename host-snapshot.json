@@ -2,8 +2,8 @@
   "_comment": "宿主快照：2026-11-14 从 rc.3 实跑用 cordis_inspect_query 导出。只留本项目触点依赖的签名，够判断漂移即可。",
   "host": {
     "version": "0.2.2-rc.3",
-    "exportedAt": "2026-11-14T15:30:00+08:00",
-    "source": "cordis_inspect_query Service.listService（精确 Service 契约，input={service:<name>}）；Client Slots.listSubTree（input={root:'settings.section'}）"
+    "exportedAt": "2026-11-17T00:50:00+08:00",
+    "source": "cordis_inspect_query Service.listService（精确 Service 契约，input={service:<name>}）；Client Slots.listSubTree（input={root:'settings.section'}）；Event.listEvents（无 input 目录形态，2026-11-17 补）"
   },
   "services": {
     "tools": {
@@ -26,6 +26,12 @@
       }
     }
   },
+  "events": {
+    "system-prompt/assemble": {
+      "mode": "waterfall",
+      "signature": "'system-prompt/assemble'(this: Scoped<SystemPrompt>, assembly: PromptPresentation, context: AssembleContext, next: () => Promise<PromptPresentation>): Promise<PromptPresentation>"
+    }
+  },
   "slots": {
     "settings.section": {
       "kind": "list",
@@ -41,6 +47,7 @@
   },
   "notes": [
     "精确 Service 契约与精确 Slot root 都可通过 input 传参查到。曾有记录说「input 传参一律被拒收」，2026-11-14 实测推翻——那是查询用法错误，不是宿主限制。",
-    "tools.restrict 仍只能移除不能改写内容（这是本项目走注册期拦截的根本原因，见 docs/DESIGN.md 第一节）。另注：restrict 读的是服务自己的 ctx（scopeOf(this.ctx)），不是调用者的。"
+    "tools.restrict 仍只能移除不能改写内容（这是本项目走注册期拦截的根本原因，见 docs/DESIGN.md 第一节）。另注：restrict 读的是服务自己的 ctx（scopeOf(this.ctx)），不是调用者的。",
+    "Event.listEvents 的 input={event:<name>} 形态在 rc.3 被拒（'input must be an object'，2026-11-17 两次实测）；无 input 的目录形态可用，且目录里每条带完整签名——events 小节从目录摘取。"
   ]
 }

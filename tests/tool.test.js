@@ -318,3 +318,28 @@ test('tool: 正常写入仍然成功', async () => {
   assert.equal(saved.servers.tinyfish.enabled, false);
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ─────────────────────────────────────────────
+// 说明页事实透传（0.5.0）
+// ─────────────────────────────────────────────
+test('tool: status 快照缺 instructions 时容缺省', async () => {
+  const { definition, dir } = setup();
+  const r = await definition.execute({ action: 'status' });
+  assert.deepEqual(r.instructions, { installed: false, removed: [] });
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('tool: status 透传 instructions 事实', async () => {
+  const dir = makeTmp();
+  const configPath = join(dir, 'tool-keeper.json');
+  const { ctx, captured } = makeCtx();
+  const deps = makeDeps(configPath);
+  deps.snapshot = () => ({
+    patched: true, configPath, diagnostics: [], problems: [],
+    instructions: { installed: true, removed: ['rea'] },
+  });
+  registerTool(ctx, { configPath, ...deps });
+  const r = await captured.definition.execute({ action: 'status' });
+  assert.deepEqual(r.instructions, { installed: true, removed: ['rea'] });
+  rmSync(dir, { recursive: true, force: true });
+});

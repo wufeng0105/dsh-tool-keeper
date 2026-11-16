@@ -599,3 +599,31 @@ test('api: import 只落认可的五个字段，不照抄任意键', async () =>
   dispose();
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ─────────────────────────────────────────────
+// 说明页事实透传（0.5.0）
+// ─────────────────────────────────────────────
+test('api: state 快照缺 instructions 时容缺省', async () => {
+  const { captured, dir, dispose } = setup();
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  assert.equal(r.status, 200);
+  assert.deepEqual(r.json.instructions, { installed: false, removed: [] });
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: state 透传 instructions 事实', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'tool-keeper-api-'));
+  const configPath = join(dir, 'tool-keeper.json');
+  const { ctx, captured } = makeCtx();
+  const deps = makeDeps(configPath);
+  deps.snapshot = () => ({
+    patched: true, configPath, problems: [], diagnostics: [],
+    instructions: { installed: true, removed: ['rea'] },
+  });
+  const dispose = mountApi(ctx, deps);
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'state' });
+  assert.deepEqual(r.json.instructions, { installed: true, removed: ['rea'] });
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});

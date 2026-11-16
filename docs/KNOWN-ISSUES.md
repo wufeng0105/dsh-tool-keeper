@@ -67,6 +67,24 @@ preflight 会标记 `slots.inject` 回调里出现 `slots.register` 的写法。
 
 ---
 
+## 七、完整提示词预设下说明页过滤不生效，且检测不到
+
+会话选用「完整提示词」类预设（dsh-persona `config.complete:true`）时，宿主在 waterfall **之后**无条件恢复 complete 段（`dsh-system-prompt/src/index.ts:693`），本插件对 sections 的过滤被覆盖。
+
+更麻烦的是**检测不到**：waterfall 里的段只有 name/text/interpolate，complete 标志被剥掉（同文件 667-672）；而 `deployment:persona-prefix` 段构造器恒注册（463-468），scoped 同名段又只在 complete 时出现——任何「数 persona-prefix 段」的启发式都会误报。
+
+**当前行为**：不造假检测。组装里未见停用服务器的说明段时，诊断如实报「未连接，或该会话使用完整提示词预设——后者说明页过滤不生效」；界面组头只在运行时事实（removed）成立时才说「说明页已一并隐藏」。工具半边不受此边界影响。
+
+---
+
+## 八、停用服务器的资源仍可读
+
+服务器开关隐藏的是工具与说明页。`read_mcp_resource` 等内置资源工具背后的 provider 仍注册着停用服务器的资源（`dsh-mcp-client/src/server-context.ts:29-31`），模型若主动点名仍读得到。
+
+**为什么不动**：资源读取是显式点名行为，不是「模型每轮自动重读」的上下文浪费；要堵得另包资源服务，超出本轮「一个开关管两半」的范围。
+
+---
+
 ## 不值得修的
 
 | 项 | 为什么不动 |

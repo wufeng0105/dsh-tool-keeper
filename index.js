@@ -25,6 +25,7 @@ import {
   normalizeConfig, applyToDefinition, diagnose, PROTECTED_TOOLS, ToolCatalog,
 } from './rules.js';
 import { configPath, readConfig } from './config.js';
+import { installInstructionsFilter } from './instructions.js';
 import { registerTool } from './tool.js';
 import { mountApi } from './api.js';
 import { hashText } from './hash.js';
@@ -77,6 +78,10 @@ export function apply(ctx, config) {
     log.warn('could not install the registration patch: ' + patch.reason);
   }
 
+  // 说明页半边：与工具补丁分开安装、分开还原，读同一份启动时规则（重启生效）。
+  const instructionsState = { installed: false, removed: [], diagnostics: [] };
+  const instructions = installInstructionsFilter(ctx, rules, instructionsState, log);
+
   // 定期把诊断算出来（首次注册后即可）
   const computeDiagnostics = () => {
     try {
@@ -86,6 +91,11 @@ export function apply(ctx, config) {
         for (const p of params) {
           base.push({ kind: 'warning', target: `rewrite.${tool}.properties.${p}`, message: `改写里的参数 ${p} 在这个工具上不存在，这段参数说明不会生效` });
         }
+      }
+      // 说明页半边的诊断（最近一次组装的事实）
+      base.push(...instructionsState.diagnostics);
+      if (!instructionsState.installed && instructionsState.reason) {
+        base.push({ kind: 'warning', target: 'instructions', message: instructionsState.reason });
       }
       return base;
     } catch (error) {
@@ -102,6 +112,10 @@ export function apply(ctx, config) {
     diagnostics: computeDiagnostics(),
     configPath: path,
     loadedHash,
+    instructions: {
+      installed: instructionsState.installed,
+      removed: [...instructionsState.removed],
+    },
     groups: [...catalog.groups()].map(([group, entries]) => ({
       group,
       entries: entries.map(e => ({
@@ -132,6 +146,7 @@ export function apply(ctx, config) {
 
   ctx.effect(() => () => {
     patch.restore();
+    instructions.restore();
     try {
       offTool();
     } catch {

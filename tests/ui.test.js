@@ -769,3 +769,37 @@ test('ui: 千分位格式化', () => {
   assert.equal(mod.__testing.num(79505), '79,505');
   assert.equal(mod.__testing.num(60), '60');
 });
+
+// ─────────────────────────────────────────────
+// 说明页半边的界面事实（0.5.0）
+// ─────────────────────────────────────────────
+test('ui: 停用且说明页确实被滤时组头说「说明页已一并隐藏」', () => {
+  const data = makeData();
+  data.rules.disabledServers = ['tinyfish'];
+  data.instructions = { installed: true, removed: ['tinyfish'] };
+  const html = renderView(data);
+  assert.ok(html.includes('说明页已一并隐藏'));
+});
+
+test('ui: 停用但最近组装没滤到时不冒充「已隐藏」', () => {
+  const data = makeData();
+  data.rules.disabledServers = ['tinyfish'];
+  data.instructions = { installed: true, removed: [] };
+  const html = renderView(data);
+  assert.ok(html.includes('已停用'));
+  assert.ok(!html.includes('说明页已一并隐藏'), '没有运行时事实就不能这么说');
+});
+
+test('ui: 快照没有 instructions 字段时页面不炸', () => {
+  const data = makeData();
+  data.rules.disabledServers = ['tinyfish'];
+  const html = renderView(data);
+  assert.ok(html.includes('已停用'));
+});
+
+test('ui: 未重启提示同时覆盖工具与说明页', () => {
+  const data = makeData();
+  data.stale = true;
+  const html = renderView(data);
+  assert.ok(html.includes('说明页'), 'stale 提示必须提到说明页');
+});

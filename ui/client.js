@@ -338,6 +338,11 @@ window.__ModuleLoader__.load({
       var serverName = isMcp ? section.group.replace(/^mcp:/, '') : undefined;
       // 总开关状态读 rules.disabledServers（引擎判定源），不是页面自己的推导
       var serverDisabled = isMcp && props.disabledServers.indexOf(serverName) >= 0;
+      // 说明页半边的事实：最近一次组装里真的移除了该服务器的说明段才这么说，
+      // 不拿配置推导冒充运行时事实（未连接/完整预设场景 removed 里没有它）。
+      var instructions = props.instructions || { installed: false, removed: [] };
+      var instructionsHidden = serverDisabled
+        && (instructions.removed || []).indexOf(serverName) >= 0;
 
       return h('section', { className: 'tw-group' },
         h('div', { className: 'tw-groupHeader' },
@@ -356,7 +361,7 @@ window.__ModuleLoader__.load({
             h('span', { className: 'tw-groupMeta' },
               h('span', { className: 'tw-count' },
                 serverDisabled
-                  ? '已停用'
+                  ? '已停用' + (instructionsHidden ? ' · 说明页已一并隐藏' : '')
                   : roles.length + ' 个' + (hiddenCount > 0 ? ' · ' + hiddenCount + ' 已隐藏' : '')),
             ),
           ),
@@ -475,7 +480,7 @@ window.__ModuleLoader__.load({
         // 不放在 React state 里——否则刷新一次提示就消失，用户看到的是「已生效」。
         data.stale
           ? h('p', { className: 'tw-note', 'data-tone': 'warn' },
-            '已保存。重启 DSH 后才生效——在此之前，模型仍然能看见并使用这些工具。')
+            '已保存。重启 DSH 后才生效——在此之前，模型仍然能看见并使用这些工具与它们的说明页。')
           : null,
 
         /* 工具栏 */
@@ -549,6 +554,7 @@ window.__ModuleLoader__.load({
                 rewrittenNames: rewrittenNames,
                 busy: props.busy,
                 disabledServers: disabledServers,
+                instructions: data.instructions || { installed: false, removed: [] },
                 open: searchOpen || expanded[g.group] === true,
                 expandedName: props.expandedName,
                 draft: props.draft,

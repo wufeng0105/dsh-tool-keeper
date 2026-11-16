@@ -293,3 +293,100 @@ test('index: 状态里不再有统计计数', () => {
   assert.ok(Array.isArray(status.groups), '工具清单从目录来');
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ─────────────────────────────────────────────
+// 说明页半边（0.5.0）
+// ─────────────────────────────────────────────
+
+/** 带事件接口的假 ctx：on 捕获监听器，返回可计数的 disposer。 */
+function makeCtxWithEvents(overrides = {}) {
+  const captured = { handler: undefined, disposed: 0 };
+  return {
+    ...makeCtx({
+      on(event, handler) {
+        captured.event = event;
+        captured.handler = handler;
+        return () => { captured.disposed++; };
+      },
+      ...overrides,
+    }),
+    captured,
+  };
+}
+
+const LIST_HEAD = '## MCP resource servers\n\nUse list_mcp_resources, list_mcp_resource_templates, or read_mcp_resource with one of these names as the server argument: ';
+
+test('index: 说明页监听器与工具补丁读同一份规则，一起生效', async () => {
+  const { dir, configPath } = makeDir({
+    servers: { rea: { enabled: false } }, tools: {}, rewrite: {},
+  });
+  const { ctx, state, captured } = makeCtxWithEvents();
+  apply(ctx, { configPath });
+
+  const status = readStatus(state);
+  assert.equal(status.instructions.installed, true);
+  assert.equal(captured.event, 'system-prompt/assemble');
+
+  // 工具半边：rea 的工具被丢
+  ctx.tools.register({ name: 'mcp__rea__x', description: 'd', parameters: {} });
+  assert.equal(state.registered.some(d => d.name === 'mcp__rea__x'), false);
+
+  // 说明页半边：同一次组装里 mcp:rea 段被移除、名单剔除
+  const upstream = {
+    sections: [
+      { name: 'mcp:rea', text: 'REA 说明' },
+      { name: 'mcp:tinyfish', text: 'TF 说明' },
+      { name: 'mcp-resource-servers', text: LIST_HEAD + JSON.stringify(['rea', 'tinyfish']) + '.' },
+    ],
+  };
+  const out = await captured.handler(upstream, {}, async () => upstream);
+  assert.ok(!out.sections.some(s => s.name === 'mcp:rea'));
+  const list = out.sections.find(s => s.name === 'mcp-resource-servers');
+  assert.equal(list.text, LIST_HEAD + JSON.stringify(['tinyfish']) + '.');
+  assert.deepEqual(readStatus(state).instructions.removed, ['rea']);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('index: 卸载时说明页监听器一并摘除', () => {
+  const { dir, configPath } = makeDir({ servers: {}, tools: {}, rewrite: {} });
+  const { ctx, state, captured } = makeCtxWithEvents();
+  apply(ctx, { configPath });
+  assert.equal(captured.disposed, 0);
+  state.effects[0].disposers.forEach(d => d());
+  assert.equal(captured.disposed, 1, '说明页监听器必须随卸载摘除');
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('index: 宿主没有事件接口时工具半边不受影响，且如实报诊断', () => {
+  const { dir, configPath } = makeDir({
+    servers: { rea: { enabled: false } }, tools: {}, rewrite: {},
+  });
+  const { ctx, state } = makeCtx(); // 无 on
+  assert.doesNotThrow(() => apply(ctx, { configPath }));
+  const status = readStatus(state);
+  assert.equal(status.instructions.installed, false);
+  assert.ok(status.diagnostics.some(d => d.target === 'instructions' && /事件接口/.test(d.message)));
+  // 工具半边照常
+  ctx.tools.register({ name: 'mcp__rea__x', description: 'd', parameters: {} });
+  assert.equal(state.registered.some(d => d.name === 'mcp__rea__x'), false);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('index: 说明页过滤出错时原样放行，诊断可见', async () => {
+  const { dir, configPath } = makeDir({
+    servers: { rea: { enabled: false } }, tools: {}, rewrite: {},
+  });
+  const { ctx, state, captured } = makeCtxWithEvents();
+  apply(ctx, { configPath });
+  const evil = new Proxy([], {
+    get(t, p) {
+      if (p === Symbol.iterator) throw new Error('boom');
+      return t[p];
+    },
+  });
+  const upstream = { sections: evil };
+  const out = await captured.handler(upstream, {}, async () => upstream);
+  assert.equal(out, upstream, 'fail-open：返回上游原对象');
+  assert.ok(readStatus(state).diagnostics.some(d => /原样放行/.test(d.message)));
+  rmSync(dir, { recursive: true, force: true });
+});

@@ -136,6 +136,9 @@ export function mountApi(ctx, deps) {
             stale,
             problems: [...problems, ...s.problems],
             diagnostics: s.diagnostics,
+            // 说明页半边的事实（最近一次组装；未安装时 installed:false）。
+            // 桩/旧快照可能没有这个字段，容缺省。
+            instructions: s.instructions ?? { installed: false, removed: [] },
             groups: groups.map(([group, entries]) => ({
               group,
               roles: entries.map(e => {

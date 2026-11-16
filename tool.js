@@ -51,11 +51,11 @@ export function registerTool(ctx, options) {
     description: [
       '管理「哪些工具进入模型上下文」。可查看全部工具及占用、按服务器/单个工具开关、改写工具说明。',
       'action=status 看概况与诊断；action=list 列全部工具（按来源分组，含字符数）；',
-      'action=server 打开/关闭整台 MCP 服务器（enabled=true/false）；',
+      'action=server 打开/关闭整台 MCP 服务器（enabled=true/false，关闭时说明页一并隐藏、打开时一并恢复）；',
       'action=tool 开关单个工具（state=drop/keep）；',
       'action=rewrite 改写工具或参数说明（省略 text=清除该工具的改写）；',
       'action=reset 恢复出厂基线。',
-      '改动写入 tool-keeper.json，需重启 DSH 才对已注册的工具生效。',
+      '改动写入 tool-keeper.json，需重启 DSH 才对已注册的工具与说明页生效。',
       '插件级启停由 DSH 插件页负责，本工具不再提供全局开关。',
     ].join(''),
     parameters: {
@@ -69,7 +69,7 @@ export function registerTool(ctx, options) {
         server: { type: 'string', description: 'MCP 服务器名（action=server 时必填）。' },
         enabled: {
           type: 'boolean',
-          description: 'action=server：true 打开整台、false 关闭整台。只动"上不上架"这一层，不碰单个工具开关。',
+          description: 'action=server：true 打开整台、false 关闭整台（说明页随开关一并隐藏/恢复）。只动"上不上架"这一层，不碰单个工具开关。',
         },
         name: { type: 'string', description: '完整工具名，如 mcp__tinyfish__search 或 read（action=tool/rewrite 时必填）。' },
         state: {
@@ -108,6 +108,7 @@ export function registerTool(ctx, options) {
           toolCount: catalog.size(),
           diagnostics: s.diagnostics,
           problems: s.problems,
+          instructions: s.instructions ?? { installed: false, removed: [] },
         };
       }
 
