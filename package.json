@@ -1,6 +1,6 @@
 {
   "name": "@wufeng0105/dsh-tool-keeper",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "type": "module",
   "description": "Keep what the model reads in line with what it can actually do: remove tools it should not see, and rewrite the manuals of the ones it keeps.",
   "license": "MIT",
