@@ -43,7 +43,7 @@
 | 渲染只取 text | `renderPrompt` 对每段取 text（`interpolate === false` 时原样），丢弃空串段，用 `'\n\n'` 拼接；`name` 不参与渲染，也不产生标题 | `dsh-system-prompt/src/index.ts:297-302` |
 | 服务器名单段 | 名字 `mcp-resource-servers`；正文 = `'## MCP resource servers\n\nUse … as the server argument: ' + JSON.stringify(排序后的名字数组) + '.'`（**数组后有尾句点**） | `dsh-mcp-resources/src/index.ts:61-73` |
 
-**推论**：说明页处理只能做「移除段 / 替换段文本 / 重写名单」，做不到「检测完整预设」。完整预设这条边界如实报告（[KNOWN-ISSUES](./KNOWN-ISSUES.md) 五），不冒充。
+**推论**：说明页处理只能做「移除段 / 替换段文本 / 重写名单」，做不到「检测完整预设」。完整预设这条边界如实报告（[KNOWN-ISSUES](./KNOWN-ISSUES.md) 二），不冒充。
 
 ---
 

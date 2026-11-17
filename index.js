@@ -76,8 +76,6 @@ export function apply(ctx, config) {
    * 注销一份不等于它已经不在了。
    */
   const liveTools = new Map();
-  /** 此刻真的注册着的工具名。 */
-  const liveNames = () => [...liveTools.keys()];
   const catalog = new ToolCatalog();
   const missingParams = new Map(); // toolName -> string[]
 
