@@ -213,7 +213,9 @@ present  todo_write  ask_user_question  tool_keeper  skill
 
 | 你想知道 | 看哪里 |
 |---|---|
+| 那些术语到底指什么 | [CONTEXT.md](./CONTEXT.md) |
 | 为什么这样实现 | [docs/DESIGN.md](./docs/DESIGN.md) |
+| 当初为什么选这个接缝 | [docs/adr/](./docs/adr/) |
 | DSH 的接口长什么样 | [docs/HOST-CONTRACT.md](./docs/HOST-CONTRACT.md) |
 | 怎么验证它真的在工作 | [docs/TESTING.md](./docs/TESTING.md) |
 | 还有哪些坑 | [docs/KNOWN-ISSUES.md](./docs/KNOWN-ISSUES.md) |

@@ -6,6 +6,7 @@
 |---|---|
 | DSH 接口事实 | [docs/HOST-CONTRACT.md](./docs/HOST-CONTRACT.md) |
 | 为什么这样设计 | [docs/DESIGN.md](./docs/DESIGN.md) |
+| 术语指什么 | [CONTEXT.md](./CONTEXT.md) |
 | 怎么判真假 | [docs/TESTING.md](./docs/TESTING.md) |
 | 还有什么坑 | [docs/KNOWN-ISSUES.md](./docs/KNOWN-ISSUES.md) |
 
@@ -117,7 +118,9 @@
 | 文件 | 主题 |
 |---|---|
 | `README.md` | 是什么、怎么用（面向使用者，一次读懂） |
+| `CONTEXT.md` | 术语的唯一真相源：一个东西一个名字，别的叫法进 `_Avoid_` |
 | `docs/DESIGN.md` | 为什么这样实现（当前依据与约束） |
+| `docs/adr/` | 难回头的取舍：当时有哪些备选、为什么选了这个 |
 | `docs/HOST-CONTRACT.md` | DSH 接口事实，每条带出处 |
 | `docs/KNOWN-ISSUES.md` | 缺陷的唯一真相源，修好一条删一条 |
 | `docs/TESTING.md` | 怎么判真假 |
@@ -127,8 +130,10 @@
 写之前先定：**这篇整体在说什么**，然后顺着这条线写下去，别把几段拼起来。
 
 - **只写当前成立的内容**：不写来历、不写改版过程、不写已被推翻的方案。历史归 CHANGELOG。
-- **同一件事只有一个真相源**：验收判法在 TESTING，缺陷在 KNOWN-ISSUES，宿主事实在 HOST-CONTRACT，设计依据在 DESIGN；别处只写一句并指过去。
+- **同一件事只有一个真相源**：验收判法在 TESTING，缺陷在 KNOWN-ISSUES，宿主事实在 HOST-CONTRACT，设计依据在 DESIGN，术语在 CONTEXT；别处只写一句并指过去。
 - **过期的直接删**：死链接、旧设计、已经不成立的话，删掉而不是修补。
 - **收尾交底**：这轮改了哪些文件、删了什么、还剩哪些坑。
+
+**动笔前先查 CONTEXT.md 的术语**：一个概念已经有名字，就用那个名字；想改用新名字，先改 CONTEXT.md 的 `_Avoid_`。
 
 需求草案、工作协议、阶段记录、审计过程——**做完就清掉**，结论并入上面其中一个文件。写新内容前先问：这属于哪一个？都不属于，那它大概不该落盘。
