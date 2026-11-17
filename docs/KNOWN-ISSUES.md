@@ -145,5 +145,9 @@
 | 同源校验信任客户端 `Host` 头 | 浏览器无法伪造 `Host`，浏览器侧不可利用 |
 | `ctx.effect` 没传 label | 只影响调试可读性 |
 | `package.json` 没有 `author` 字段 | 私有项目 |
-| `ToolCatalog.names()` 无调用方 | 是类的正常接口（与 `has`/`get`/`size` 同类），不是孤立死代码 |
 | `ctx.provide('tool_keeper')` 与 `state.source` 本仓库无消费者 | 前者是跨插件的服务契约，后者是 API 线格式。「本仓库没人用」不等于「契约允许删」——试过删除，18 条测试立刻变红 |
+| `state.source` 字段界面不读 | 页面判断「服务器已停用」用的是 `rules.disabledServers`，不是 `role.source`。与上一条同一判断：可能是给别的消费者用的线格式，删了要改测试断言。真要删应连同 `sourceOf()` 一起，先确认没有跨插件消费方 |
+| `ToolGroup` 与 `nextServersAfterRewrite` 各写一遍「两个字段都空才删整条」 | 浏览器半不能用 ESM import，这段重复拆不掉。两处已互指注释，改一处必须同时改另一处 |
+| `instructions.js` 用字符串锚点 `as the server argument: ` 解析宿主名单段 | waterfall 只给 `{name, text}`，没有结构化替代。宿主改一个字就静默失效（有诊断兜底）。这是必要的脆弱，不是设计失误 |
+| `host-snapshot.json` 只记 `tools` 服务的 5 个方法，rc.3 实有 11 个 | 快照的作用是「所依赖的方法还在吗」，不是「宿主方法全集」。`recheck` 报 0 CHANGED 不代表宿主没变化。扩到全集不产生收益，只增加维护面 |
+| `package-lock.json` 版本号仍停在旧值 | 不参与发布与安装，`package.json` 为准 |

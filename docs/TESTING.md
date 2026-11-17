@@ -14,10 +14,12 @@ npm test
 | 文件 | 测什么 |
 |---|---|
 | `tests/rules.test.js` | 纯函数核心：配置解析、判定优先级、参数改写、诊断 |
+| `tests/decide-equivalence.test.js` | `decide()` 与合并前旧实现在全部组合上逐对比对；守「非 MCP 名字的 drop 规则不能被 MCP 分支吞掉」 |
 | `tests/index.test.js` | 宿主半：补丁安装与还原、失败可见、冻结服务 |
 | `tests/instructions.test.js` | 说明页半边：段落移除/改写/原文捕获、名单重写、格式漂移 fail-open |
-| `tests/tool.test.js` | 模型工具 `tool_keeper` 的六个 action |
-| `tests/api.test.js` | HTTP 接口：同源校验、写前校验、指纹比对 |
+| `tests/tool.test.js` | 模型工具 `tool_keeper` 的六个 action；**含坏配置下 reset 仍可用**（它是用户从坏配置里出来的入口） |
+| `tests/config.test.js` | 配置读写：原子写、降级写不留临时文件、坏配置与根非对象一律拒绝、备份 |
+| `tests/api.test.js` | HTTP 接口：同源校验、写前校验、指纹比对；**含坏配置时 `op=set` 必须拒绝且磁盘零改动** |
 | `tests/ui.test.js` | 设置页：用 react 离线渲染真实 HTML 并断言结构 |
 | `tests/live-tools.test.js` | 注册计数：同名多次、disposer 幂等、thenable、注销递减 |
 

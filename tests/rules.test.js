@@ -174,6 +174,27 @@ test('decide: 原生工具不受服务器规则影响', () => {
   assert.equal(decide('schedule_list', rules).action, 'keep');
 });
 
+// 非 MCP 名字也可能有自己的 drop 规则，且不受服务器闸影响。
+// 这条守住 decide() 里那个「单工具规则」判断不能被写成只对 MCP 名字生效——
+// 曾有一版把它嵌进 parts !== undefined 分支内，MCP 工具照常、原生工具全部漏网。
+// web_fetch / schedule_list / create_goal 都不在保护名单里，漏网就会真的多出来。
+test('decide: 非 MCP 名字的 drop 规则同样生效', () => {
+  const rules = rulesOf({ tools: { web_fetch: 'drop', schedule_list: 'drop' } });
+  assert.equal(decide('web_fetch', rules).action, 'drop');
+  assert.equal(decide('schedule_list', rules).action, 'drop');
+  assert.equal(decide('web_fetch', rules).reason, 'tool override: drop');
+});
+
+test('decide: 非 MCP 名字的 drop 规则与 MCP 规则互不干扰', () => {
+  const rules = rulesOf({
+    servers: { tinyfish: { enabled: false } },
+    tools: { web_fetch: 'drop' },
+  });
+  assert.equal(decide('web_fetch', rules).action, 'drop', '原生工具按自己的规则丢');
+  assert.equal(decide('mcp__tinyfish__search', rules).action, 'drop', 'MCP 工具按服务器闸丢');
+  assert.equal(decide('mcp__other__x', rules).action, 'keep', '不相干的仍然放行');
+});
+
 test('decide: rewrite 命中时返回改写条目', () => {
   const rules = rulesOf({ rewrite: { 'mcp__tinyfish__fetch_content': '读网页正文。' } });
   const v = decide('mcp__tinyfish__fetch_content', rules);
