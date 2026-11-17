@@ -450,151 +450,67 @@ export class ToolCatalog {
 }
 
 /**
- * 诊断：找出配置里那些「写了但不可能生效」的条目。
- * 静默失效的过滤器比没有过滤器更坏（见 docs/KNOWN-ISSUES.md 前几条）。
+ * 诊断：找出配置里**写错了**的条目。
  *
- * ## 两个名字集合，语义不同，不能混用
+ * 判据只有一条：**这条配置指向的东西存在吗？** 不存在就是废配置，
+ * 用户该删掉或改名。存在就正常，不管它此刻在不在线。
  *
- * - `seenNames`：**见过**的工具名。判断「这个名字是否存在过」。
- *   被 drop 的工具按设计不会注册，但它们确实存在——所以这个集合必须包含它们，
- *   否则那些有意关掉的工具会被误报成「名字对不上（可能改名了）」。
- * - `liveNames`：**此刻在线**的工具名。判断「这台服务器连上了没有」。
- *   服务器断开后它的工具全部注销，但名字仍然「见过」。
+ * ## 为什么只判断「存在」，不判断「在线」
  *
- * 早期版本只有一个集合，两种语义挤在一起：只传在线名会把被 drop 的规则全报成
- * 失效；只传见过的名则永远发现不了服务器已断开。所以拆成两个。
+ * 早期版本还报「服务器未连接」「工具当前离线」。那些消息有两个毛病：
+ *
+ * 1. **它们描述的是正常状态。** 停用一台服务器，它的工具本来就不该出现；
+ *    配 `drop` 关掉一个工具，它不在正是配置生效的样子。把正常说成
+ *    「暂不生效」会让人以为出了问题，却没有任何可做的动作。
+ * 2. **它们会说假话。** 「服务器 X 的 232 条规则暂不生效」在服务器确实
+ *    连着、规则确实在生效时也照样报出来。
+ *
+ * 所以在线与否一概不看。这里只用 `knownNames`——曾经出现过的工具名，
+ * 由 `ToolCatalog` 记录，只增不减，足够回答「这个名字存在吗」。
  *
  * @param rules - 归一化后的规则
- * @param seenNames - 曾经注册过的工具名（含被 drop 的）
- * @param liveNames - 此刻真正注册着的工具名；省略时按 seenNames 处理
+ * @param knownNames - 曾经出现过的工具名
  * @returns {{ kind: string, target: string, message: string }[]}
  */
-export function diagnose(rules, seenNames, liveNames) {
+export function diagnose(rules, knownNames) {
   const out = [];
-  const seen = new Set(seenNames || []);
-  // 不传就退回 seen：老调用方（只关心「见过什么」的测试）仍然照旧工作。
-  const live = new Set(liveNames === undefined ? (seenNames || []) : liveNames);
+  const known = new Set(knownNames || []);
+  const warn = (target, message) => out.push({ kind: 'warning', target, message });
 
-  const seenServers = new Set();
-  for (const n of seen) {
-    const p = splitMcpName(n);
-    if (p !== undefined) seenServers.add(p.server);
+  // 1) 指向不存在的工具：规则和改写各聚合一条。
+  //    一台服务器可能有几百条，逐个报会刷屏。
+  const unknownRules = [...rules.toolOverrides.keys()].filter(n => !known.has(n));
+  const unknownRewrites = [...rules.rewrites.keys()].filter(n => !known.has(n));
+  if (unknownRules.length > 0) {
+    warn('tools', `${unknownRules.length} 条工具规则指向不存在的工具：${list(unknownRules)}`);
   }
-  const liveServers = new Set();
-  for (const n of live) {
-    const p = splitMcpName(n);
-    if (p !== undefined) liveServers.add(p.server);
-  }
-  const serverOf = name => {
-    const p = splitMcpName(name);
-    return p === undefined ? 'core' : p.server;
-  };
-
-  // 1) 停用的服务器：当前有没有它的工具出现
-  for (const server of rules.disabledServers) {
-    if (!seenServers.has(server)) {
-      out.push({
-        kind: 'warning',
-        target: 'servers.' + server,
-        message: `服务器 ${server} 暂时没有工具出现，停用规则暂不生效（未连接或已移除，规则会保留）`,
-      });
-    }
+  if (unknownRewrites.length > 0) {
+    warn('rewrite', `${unknownRewrites.length} 条改写指向不存在的工具：${list(unknownRewrites)}`);
   }
 
-  // 2) 停用 + 说明页改写：两者同条目，停用优先，改写不会生效。
-  //    这是纯配置事实，不必等运行时组装就能说清。
-  for (const server of (rules.serverRewrites ?? new Map()).keys()) {
-    if (rules.disabledServers.has(server)) {
-      out.push({
-        kind: 'warning',
-        target: 'servers.' + server + '.rewrite',
-        message: `服务器 ${server} 已停用，说明页改写不会生效（启用后生效）`,
-      });
-    }
-  }
-
-  // 3) 单工具规则：按服务器聚合。一台可能有几百条 drop，
-  //    逐个报会刷屏；同名服务器下匹配不到的统一报一条。
-  const overridesByServer = new Map();
-  for (const name of rules.toolOverrides.keys()) {
-    const s = serverOf(name);
-    if (!overridesByServer.has(s)) overridesByServer.set(s, []);
-    overridesByServer.get(s).push(name);
-  }
-  for (const [server, names] of overridesByServer) {
-    const missing = names.filter(n => !seen.has(n));
-    if (missing.length === 0) continue;
-    // 「这台服务器连上了没有」要看在线名，不是见过的名：停用服务器的工具
-    // 本来就全部不注册，用见过的名永远判不出它已断开。
-    if (server !== 'core' && !liveServers.has(server)) {
-      out.push({
-        kind: 'warning',
-        target: `servers.${server}`,
-        message: `服务器 ${server} 的 ${names.length} 条工具规则暂不生效（服务器未连接或已移除），规则会保留`,
-      });
-    } else {
-      const shown = missing.slice(0, 8).join('、') + (missing.length > 8 ? ` 等 ${missing.length} 个` : '');
-      out.push({
-        kind: 'warning',
-        target: 'tools',
-        message: `有 ${missing.length} 个工具名对不上（可能改名了）：${shown}`,
-      });
-    }
-  }
-
-  // 4) 改写：同样按服务器聚合"不存在"的情况；存在的工具再查两件会静默失效的事
-  const rewritesByServer = new Map();
+  // 2) 改写写在了用不上的工具上：被隐藏、或是受保护工具。
   for (const name of rules.rewrites.keys()) {
-    const s = serverOf(name);
-    if (!rewritesByServer.has(s)) rewritesByServer.set(s, []);
-    rewritesByServer.get(s).push(name);
-  }
-  for (const [server, names] of rewritesByServer) {
-    const missing = names.filter(n => !seen.has(n));
-    if (missing.length > 0) {
-      if (server !== 'core' && !liveServers.has(server)) {
-        out.push({
-          kind: 'warning',
-          target: `servers.${server}`,
-          message: `服务器 ${server} 的 ${names.length} 条改写暂不生效（服务器未连接或已移除），规则会保留`,
-        });
-      } else {
-        out.push({
-          kind: 'warning',
-          target: 'rewrite',
-          message: `有 ${missing.length} 条改写指向不存在的工具（可能改名了）：${missing.slice(0, 8).join('、')}`,
-        });
-      }
+    if (!known.has(name)) continue;   // 第 1 步已经报过
+    const verdict = decide(name, rules);
+    if (verdict.action === 'drop') {
+      warn('rewrite.' + name, `${name} 已被规则隐藏，改写它不会生效（先把这个工具放出来）`);
+    } else if (verdict.reason === 'protected') {
+      warn('rewrite.' + name, `${name} 是受保护的基础工具，改写不会生效`);
     }
-    // 工具存在但永远不会执行到改写：说出来，别让它静默失效
-    for (const name of names) {
-      if (!seen.has(name)) continue;
-      // 见过、但此刻不在线：改写同样用不上。
-      // 不报的话就是静默——用户以为改写在生效，实际那个工具根本没注册。
-      if (!live.has(name)) {
-        out.push({
-          kind: 'warning',
-          target: 'rewrite.' + name,
-          message: `工具 ${name} 当前不在线，这条改写暂时用不上（它重新注册后会自动生效）`,
-        });
-        continue;
-      }
-      const verdict = decide(name, rules);
-      if (verdict.action === 'drop') {
-        out.push({
-          kind: 'warning',
-          target: 'rewrite.' + name,
-          message: `工具 ${name} 已被规则隐藏，这条改写不会生效（要它生效先把工具放出来）`,
-        });
-      } else if (verdict.reason === 'protected') {
-        out.push({
-          kind: 'warning',
-          target: 'rewrite.' + name,
-          message: `${name} 是受保护的基础工具，改写不会生效`,
-        });
-      }
+  }
+
+  // 3) 服务器停用、却又配了说明页改写：两条配置互相抵消，删掉改写即可。
+  for (const server of rules.serverRewrites.keys()) {
+    if (rules.disabledServers.has(server)) {
+      warn('servers.' + server + '.rewrite', `服务器 ${server} 已停用，说明页改写不会生效（启用服务器，或删掉这段改写）`);
     }
   }
 
   return out;
 }
+
+/** 最多列 8 个名字，其余折成「等 N 个」。 */
+function list(names) {
+  return names.slice(0, 8).join('、') + (names.length > 8 ? ` 等 ${names.length} 个` : '');
+}
+

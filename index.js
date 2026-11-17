@@ -101,15 +101,13 @@ export function apply(ctx, config) {
   // 参数 takeRules 允许调用方用「磁盘上的当前配置」再算一遍：诊断描述的是配置
   // 此刻对不对，而不是启动那一刻对不对。否则删掉一条有问题的配置后，那句诊断
   // 会一直挂到下次重启——而重启正是用户刚做过、却发现没用的事。
-  //
-  // 两个名字集合语义不同，都要给：
-  // - catalog.names()：见过的全部（含被 drop 的）。判断「这个名字存在过吗」。
-  //   被 drop 的工具按设计不注册，只用在线名会把用户有意关掉的规则全报成失效。
-  // - liveNames()：此刻在线的。判断「这台服务器连上了吗」。
+  // 诊断只回答一个问题：配置里写的名字存在吗？
+  // 用 catalog.names()（见过的全部，含被 drop 的）。被 drop 的工具按设计
+  // 不注册，用在线名单会把用户有意关掉的规则全报成「名字对不上」。
   const computeDiagnostics = (takeRules) => {
     try {
       const active = takeRules ?? rules;
-      const base = diagnose(active, catalog.names(), liveNames());
+      const base = diagnose(active, catalog.names());
       // 改写的参数名不存在也要报出来（DESIGN「只改文字，不碰结构」）
       for (const [tool, params] of missingParams) {
         const stillConfigured = active.rewrites?.has(tool) === true;
@@ -276,10 +274,18 @@ function trackDisposer(dispose, nm, named, liveTools, log, missingParams) {
     }
   };
 
-  // 保住 thenable：宿主靠 wrapper.then 支持 await dispose()。
+  // 保住 thenable：宿主靠 dispose.then 支持 `await dispose()`。
   // 不复制它，调用方 await 我们的包装器会立刻继续，异步拆除还没完成。
+  //
+  // 时序上有个坑：宿主的 then 实现是「先把结果交给调用方，再跑自己的清理」，
+  // 所以把 release 挂在它后面（finally）会让调用方在 `await d` 返回时
+  // 发现计数还没退。这里改为**先退计数，再转发**——计数描述的是「这个工具
+  // 还算不算在线」，而 `await` 一旦返回，调用方就认为它已经拆完了。
   if (typeof dispose.then === 'function') {
-    wrapper.then = (...args) => Promise.resolve(dispose.then(...args));
+    wrapper.then = (onFulfilled, onRejected) => {
+      release();
+      return dispose.then(onFulfilled, onRejected);
+    };
   }
   // 宿主在 disposer 上挂的元数据（`symbols.effect`）也带上，
   // 否则 ctx.getEffects() 的树里会看不到这个 effect。

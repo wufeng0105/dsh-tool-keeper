@@ -377,21 +377,19 @@ test('applyToDefinition: 无规则时返回原对象', () => {
 // ─────────────────────────────────────────────
 // diagnose —— 只看「配置事实 + 实际见到的工具」
 // ─────────────────────────────────────────────
-test('diagnose: 配置了服务器但当前无它的工具 → warning（不再有 error 态）', () => {
+test('diagnose: 停用的服务器连不上 → 不报（那是正常状态）', () => {
+  // 停用一台服务器，它本来就不该有工具出现。把它报成「暂不生效」
+  // 会让人以为出了问题，却没有任何可做的动作。
   const rules = rulesOf({ servers: { ghost: { enabled: false } } });
   const out = diagnose(rules, []);
-  const hit = out.find(d => d.target === 'servers.ghost');
-  assert.ok(hit, '必须报出 ghost');
-  assert.equal(hit.kind, 'warning', '判断不了「改名」还是「没连上」，一律降为警告');
-  assert.ok(hit.message.includes('暂不生效'), '要说清规则只是暂不生效');
+  assert.equal(out.length, 0, '停用是正常状态，不该报');
 });
 
-test('diagnose: 服务器存在但无工具 → warning', () => {
-  const rules = rulesOf({ servers: { tinyfish: { enabled: false } } });
-  const out = diagnose(rules, []);
-  const hit = out.find(d => d.target === 'servers.tinyfish');
-  assert.ok(hit);
-  assert.equal(hit.kind, 'warning');
+test('diagnose: 工具被 drop 后不在线 → 不报（正是配置生效的样子）', () => {
+  const rules = rulesOf({ tools: { 'mcp__tinyfish__search': 'drop' } });
+  // 工具注册过（见过的名里有它），现在不在线——这就是 drop 想要的结果
+  const out = diagnose(rules, ['mcp__tinyfish__search']);
+  assert.equal(out.length, 0, '规则生效中，不该报');
 });
 
 test('diagnose: 完全正常的配置不产生任何诊断', () => {
@@ -400,10 +398,12 @@ test('diagnose: 完全正常的配置不产生任何诊断', () => {
   assert.deepEqual(out, []);
 });
 
-test('diagnose: 改写指向不存在的服务器 → 按服务器聚合成一条', () => {
+test('diagnose: 改写指向不存在的工具 → 报一条', () => {
   const rules = rulesOf({ rewrite: { 'mcp__gone__tool': 'x' } });
   const out = diagnose(rules, ['mcp__tinyfish__search']);
-  assert.ok(out.some(d => d.target === 'servers.gone'), '按服务器聚合成一条');
+  const hit = out.find(d => d.target === 'rewrite');
+  assert.ok(hit, '改名/typo 是废配置，必须报出来');
+  assert.ok(hit.message.includes('mcp__gone__tool'));
 });
 
 test('diagnose: rewrite 落在被隐藏的工具上 → warning（不静默失效）', () => {
