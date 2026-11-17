@@ -113,6 +113,29 @@
 
 ---
 
+## 十三、磁盘配置根为 `null` 时设置页静默
+
+`readConfig` 对 `null` 返回 `raw: null, error: undefined`，`normalizeConfig(null)` 返回空问题列表，于是 `op=state` 报 `problems: []`、`stale: null`——页面显示成一份正常的空配置。
+
+但写入口（`readConfigOrBaseline`）已经把 `null` 认定为坏配置并拒绝。**同一个事实两个判据**：页面说没事，写操作会 400。
+
+`42` / `true` / `"abc"` / `[]` 这几种根都正常报出问题，只有 `null` 漏网，因为它同时是「文件不存在」的表示。
+
+**为什么暂不动**：改它要区分「文件不存在」与「文件内容就是 null」，而 `readConfig` 目前用同一个值表示两件事。得先让读路径把二者分开，属于接口改动，不是一行的事。
+
+---
+
+## 十四、`export` 丢掉了坏配置的原文
+
+`op=export` 用 `readConfig(configPath).raw ?? createBaselineConfig()`，把 `readConfig` 返回的 `text`（磁盘原文）丢掉了。注释写的是「坏配置也要能带出去修」，实际做不到：
+
+- 半截 JSON → 导出的是空基线，坏原文没了
+- 根为 `42` / `[]` → 导出原值，但 `import` 会以 `EBADARG` 拒收，导不回去
+
+**为什么暂不动**：正确的做法是导出时带上原文或明确标记「这是坏配置」，这会改 `export` 的返回结构，界面与测试都要跟着动。
+
+---
+
 ## 不值得修的
 
 | 项 | 为什么不动 |

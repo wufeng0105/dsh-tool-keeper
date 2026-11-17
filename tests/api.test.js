@@ -703,3 +703,65 @@ test('api: state 透传 texts 与 rewritten', async () => {
   dispose();
   rmSync(dir, { recursive: true, force: true });
 });
+
+// ─────────────────────────────────────────────
+// 坏配置下的写入：不许静默清空用户规则
+//
+// 背景：op=set 曾经用 readConfig().raw，读不出来时拿 createBaselineConfig() 顶替，
+// 于是「读失败」被当成「空配置」，整块覆盖写回 —— 用户的全部规则消失，还返回 200 ok。
+// 修复前这两条会红（见 ROADMAP-AUDIT D1）。
+// ─────────────────────────────────────────────
+
+const BROKEN_CONFIG = '{"servers":{"exa":{"enabled":false}},"tools":{"mcp__x__y":"drop"},';
+
+test('api: 坏配置时 op=set 必须拒绝，不得清空用户规则', async () => {
+  const { captured, configPath, dir, dispose } = setup();
+  writeFileSync(configPath, BROKEN_CONFIG);
+
+  const r = await callHandler(captured.route.handler, 'POST', {
+    op: 'set', servers: { codegraph: { enabled: false } },
+  });
+
+  assert.equal(r.status, 400, '读不出配置时必须拒绝写入，而不是用空基线顶替');
+  assert.equal(r.json.ok, undefined, '失败响应不该带 ok:true');
+  assert.equal(readFileSync(configPath, 'utf8'), BROKEN_CONFIG, '磁盘必须一个字节都没变');
+
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: 配置正常时 op=set 照常成功（修复不得矫枉过正）', async () => {
+  const { captured, configPath, dir, dispose } = setup();
+  writeFileSync(configPath, JSON.stringify({
+    servers: { exa: { enabled: false } },
+    tools: { 'mcp__tinyfish__search': 'drop' },
+    rewrite: {},
+  }, null, 2));
+
+  const r = await callHandler(captured.route.handler, 'POST', {
+    op: 'set', servers: { codegraph: { enabled: false } },
+  });
+
+  assert.equal(r.status, 200, '配置正常时必须照常写入');
+  const saved = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.deepEqual(saved.servers, { codegraph: { enabled: false } });
+  assert.deepEqual(saved.tools, { 'mcp__tinyfish__search': 'drop' }, '未提交的 tools 必须保留');
+
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test('api: 坏配置时 op=reset 仍能救命（逃生口不得被堵）', async () => {
+  const { captured, configPath, dir, dispose } = setup();
+  writeFileSync(configPath, BROKEN_CONFIG);
+
+  const r = await callHandler(captured.route.handler, 'POST', { op: 'reset' });
+
+  assert.equal(r.status, 200, 'reset 是修坏配置的正当入口，必须能用');
+  assert.ok(typeof r.json.backup === 'string' && r.json.backup.includes('.bak-'), '必须先备份再覆盖');
+  const saved = JSON.parse(readFileSync(configPath, 'utf8'));
+  assert.deepEqual(saved.tools, {}, 'reset 后应是空基线');
+
+  dispose();
+  rmSync(dir, { recursive: true, force: true });
+});

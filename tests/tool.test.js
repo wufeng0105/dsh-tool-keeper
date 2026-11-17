@@ -238,6 +238,48 @@ test('tool: 未知 action 抛错', async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+// reset 是修复坏配置的入口，它不需要读出现有内容 —— 读盘必须排在它之后。
+// 否则配置一坏，模型侧连 reset 都用不了，而它本该是最后的补救手段。
+// （HTTP 侧的 op=reset 一直正常，坏的是模型工具这条路。）
+const BROKEN_CASES = [
+  ['半截 JSON', '{"servers":{"exa":{"enabled":false}},'],
+  ['根为 42', '42'],
+  ['根为 null', 'null'],
+  ['根为 true', 'true'],
+  ['根为 "abc"', '"abc"'],
+  ['根为 []', '[]'],
+];
+
+for (const [label, content] of BROKEN_CASES) {
+  test(`tool: 坏配置（${label}）下 action=reset 仍能恢复`, async () => {
+    const { definition, configPath, dir } = setup();
+    writeFileSync(configPath, content);
+
+    const r = await definition.execute({ action: 'reset' });
+
+    assert.equal(r.ok, true, 'reset 不得因配置坏而拒绝');
+    assert.ok(r.note.includes('备份'), '覆盖前必须留备份');
+    const saved = JSON.parse(readFileSync(configPath, 'utf8'));
+    assert.deepEqual(saved.tools, {}, 'reset 后应是空基线');
+
+    rmSync(dir, { recursive: true, force: true });
+  });
+}
+
+test('tool: 坏配置下 action=reset 保留原文件为备份（内容不丢）', async () => {
+  const { definition, configPath, dir } = setup();
+  const broken = '{"servers":{"exa":{"enabled":false}},';
+  writeFileSync(configPath, broken);
+
+  const r = await definition.execute({ action: 'reset' });
+
+  const match = /备份在 (.+?)；/.exec(r.note);
+  assert.ok(match, 'note 里要给出备份路径');
+  assert.equal(readFileSync(match[1], 'utf8'), broken, '备份必须是坏掉的原文，用户才能手改回来');
+
+  rmSync(dir, { recursive: true, force: true });
+});
+
 // ─────────────────────────────────────────────
 // 写回后仍能被 rules.js 正确解析（端到端）
 // ─────────────────────────────────────────────

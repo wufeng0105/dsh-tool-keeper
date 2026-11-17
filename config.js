@@ -7,7 +7,7 @@
  * @module dsh-tool-keeper/config
  */
 
-import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, mkdirSync, existsSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import { normalizeConfig } from './rules.js';
@@ -55,14 +55,26 @@ export function readConfig(path) {
 
 /**
  * 读配置用于写操作。文件不存在时得到出厂基线；文件坏了则拒绝（不覆盖用户数据）。
+ *
+ * 「坏」包含两种：JSON 解析失败，以及**解析成功但根不是对象**
+ * （`null` / `42` / `"abc"` / `[]`）。后者若不在这里挡住，调用方拿到它去
+ * 赋值 `.servers = {}` 会抛 TypeError，响应变成 500 EINTERNAL——用户既不知道
+ * 配置坏了，也不知道该改什么。统一按 EINVALID 拒绝，调用方回 400 并说清原因。
+ *
  * @param {string} path
  * @returns {object}
- * @throws 配置无法解析时抛出
+ * @throws 配置无法解析或不是对象时抛出（code = EINVALID）
  */
 export function readConfigOrBaseline(path) {
   const { raw, error } = readConfig(path);
-  if (raw !== undefined) return raw;
-  const failure = new Error(error ?? `cannot read ${path}`);
+  if (raw !== undefined && raw !== null && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw;
+  }
+  const failure = new Error(
+    raw === undefined
+      ? (error ?? `cannot read ${path}`)
+      : `配置根必须是一个对象，实际是 ${raw === null ? 'null' : Array.isArray(raw) ? 'array' : typeof raw}`,
+  );
   failure.code = 'EINVALID';
   throw failure;
 }
@@ -79,6 +91,14 @@ export function readConfigOrBaseline(path) {
  * @throws 配置有问题时抛出，且不写盘
  */
 export function writeConfig(path, data) {
+  // null / undefined 不能被当成「空配置」写出去：normalizeConfig 允许它们
+  // （那是给「文件不存在」用的读语义），但写出 null 会造出一个下次读就报错的
+  // 配置文件。写盘侧必须要求一个真对象，空对象 {} 才是合法的「什么都没有」。
+  if (data === null || data === undefined) {
+    const error = new Error('拒绝写入：配置必须是一个对象，不能是 ' + String(data));
+    error.code = 'EINVALID';
+    throw error;
+  }
   let roundTripped = data;
   try {
     roundTripped = JSON.parse(JSON.stringify(data));
@@ -101,10 +121,28 @@ export function writeConfig(path, data) {
     renameSync(tmp, path);
     return;
   } catch (error) {
-    // Windows 上目标被占用时 rename 会失败；退化为直接写
-    if (!['EPERM', 'EEXIST', 'EACCES'].includes(error?.code ?? '')) throw error;
+    // Windows 上目标被占用时 rename 会失败；退化为直接写。
+    // 不写就等于这次修改全丢，所以降级是对的——但必须把 tmp 清掉，
+    // 否则每次占用都会在用户目录留一个 tool-keeper.json.tmp-<pid>-<rand>。
+    if (!['EPERM', 'EEXIST', 'EACCES'].includes(error?.code ?? '')) {
+      cleanupTemp(tmp);
+      throw error;
+    }
   }
-  writeFileSync(path, text, 'utf8');
+  try {
+    writeFileSync(path, text, 'utf8');
+  } finally {
+    cleanupTemp(tmp);
+  }
+}
+
+/** 删掉临时文件；清理失败不该让一次成功的写入变成失败。 */
+function cleanupTemp(tmp) {
+  try {
+    if (existsSync(tmp)) unlinkSync(tmp);
+  } catch {
+    // 删不掉就留着：它是垃圾文件，不影响数据正确性
+  }
 }
 
 /**

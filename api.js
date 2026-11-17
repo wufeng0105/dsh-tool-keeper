@@ -25,7 +25,7 @@
  */
 
 import { normalizeConfig, decide } from './rules.js';
-import { readConfig, writeConfig, backupConfig } from './config.js';
+import { readConfig, readConfigOrBaseline, writeConfig, backupConfig } from './config.js';
 import { createBaselineConfig } from './baseline.js';
 import { hashText } from './hash.js';
 
@@ -243,12 +243,15 @@ export function mountApi(ctx, deps) {
 
         // ---- set：写入变更（整块替换某类规则） ----
         if (op === 'set') {
-          let data = readConfig(configPath).raw;
-          if (data === null || data === undefined || typeof data !== 'object') data = createBaselineConfig();
+          // 必须用 readConfigOrBaseline：读不出磁盘配置时抛 EINVALID（400），
+          // 而不是拿空基线顶替。曾经用 readConfig().raw + 基线顶替，结果是
+          // 「读失败」被当成「空配置」，整块覆盖写回——用户的全部规则消失，
+          // 还返回 200 ok。这是数据丢失，不是配置错误。
+          // reset / import 不走这里：它们是修坏配置的逃生口，先备份再覆盖是对的。
+          const data = readConfigOrBaseline(configPath);
           if (data.servers === undefined) data.servers = {};
           if (data.tools === undefined) data.tools = {};
           if (data.rewrite === undefined) data.rewrite = {};
-
 
           if (body.servers !== undefined) {
             if (body.servers === null || typeof body.servers !== 'object' || Array.isArray(body.servers)) {

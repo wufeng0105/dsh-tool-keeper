@@ -122,15 +122,10 @@ export function registerTool(ctx, options) {
         return { groups, total: catalog.size() };
       }
 
-      // 写操作：先读盘上现状（不是内存里的 rules，避免覆盖别的改动）
-      const data = readConfigOrBaseline(configPath);
-      const base = { ...data };
-      if (base.servers === undefined) base.servers = {};
-      if (base.tools === undefined) base.tools = {};
-      if (base.rewrite === undefined) base.rewrite = {};
-
-
       // ---- reset ----
+      // 必须排在读盘之前：reset 不需要知道现有配置是什么，它就是把配置换掉。
+      // 读盘放在前面会让「配置坏了 → reset 报配置坏」这种死循环成立，
+      // 而 reset 正是用户从坏配置里出来的入口。备份由 backupConfig 保证。
       if (action === 'reset') {
         const backup = backupConfig(configPath);
         writeConfig(configPath, createBaselineConfig());
@@ -141,6 +136,15 @@ export function registerTool(ctx, options) {
             : '已写入出厂基线；重启后生效',
         };
       }
+
+      // 其余写操作：先读盘上现状（不是内存里的 rules，避免覆盖别的改动）。
+      // 读不出来就拒绝 —— 否则会用空基线覆盖掉用户的全部规则。
+      const data = readConfigOrBaseline(configPath);
+      const base = { ...data };
+      if (base.servers === undefined) base.servers = {};
+      if (base.tools === undefined) base.tools = {};
+      if (base.rewrite === undefined) base.rewrite = {};
+
 
       // ---- server ----
       if (action === 'server') {

@@ -277,16 +277,15 @@ export function decide(name, rules) {
   const parts = splitMcpName(name);
   const override = rules.toolOverrides.get(name);
 
-  if (parts !== undefined) {
-    // 1. 服务器总开关：物理闸，关 = 整台一个不剩
-    if (rules.disabledServers.has(parts.server)) {
-      return { action: 'drop', reason: `server ${parts.server} disabled` };
-    }
-    // 2. 单工具规则（唯一的选择层；没明确关的默认 keep）
-    if (override === 'drop') {
-      return { action: 'drop', reason: 'tool override: drop' };
-    }
-  } else if (override === 'drop') {
+  // 1. 服务器总开关：物理闸，关 = 整台一个不剩。
+  //    只对 MCP 名字成立——服务器名只能从 `mcp__<server>__<leaf>` 里解析出来。
+  if (parts !== undefined && rules.disabledServers.has(parts.server)) {
+    return { action: 'drop', reason: `server ${parts.server} disabled` };
+  }
+  // 2. 单工具规则（唯一的选择层；没明确关的默认 keep）。
+  //    不需要再判断 parts：非 MCP 名字一样可能有 drop 规则，MCP 名字前面已经
+  //    让服务器闸先判过了。原先这里拆成 if/else-if 两支，两支的函数体一字不差。
+  if (override === 'drop') {
     return { action: 'drop', reason: 'tool override: drop' };
   }
 

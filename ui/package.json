@@ -1,6 +1,6 @@
 {
   "name": "dsh-tool-keeper-ui",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "private": true,
   "description": "Tool Keeper 设置页（浏览器半）：逐个工具开关、改写工具与服务器说明页。",
   "type": "module",
