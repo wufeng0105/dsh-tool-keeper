@@ -39,6 +39,7 @@
     "cordis.patch.yml",
     "icon.png",
     "docs",
+    "CONTEXT.md",
     "README.md",
     "CHANGELOG.md",
     "LICENSE"
