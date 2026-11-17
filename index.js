@@ -102,12 +102,14 @@ export function apply(ctx, config) {
   // 此刻对不对，而不是启动那一刻对不对。否则删掉一条有问题的配置后，那句诊断
   // 会一直挂到下次重启——而重启正是用户刚做过、却发现没用的事。
   //
-  // 工具名集合用运行时捕获的那份：它描述的是「宿主此刻注册着什么」，
-  // 磁盘配置推不出来。注册与注销都要记，否则已注销的名字会让诊断沉默。
+  // 两个名字集合语义不同，都要给：
+  // - catalog.names()：见过的全部（含被 drop 的）。判断「这个名字存在过吗」。
+  //   被 drop 的工具按设计不注册，只用在线名会把用户有意关掉的规则全报成失效。
+  // - liveNames()：此刻在线的。判断「这台服务器连上了吗」。
   const computeDiagnostics = (takeRules) => {
     try {
       const active = takeRules ?? rules;
-      const base = diagnose(active, liveNames());
+      const base = diagnose(active, catalog.names(), liveNames());
       // 改写的参数名不存在也要报出来（DESIGN「只改文字，不碰结构」）
       for (const [tool, params] of missingParams) {
         const stillConfigured = active.rewrites?.has(tool) === true;

@@ -49,25 +49,25 @@ const TOOL = 'mcp__probe__thing';
 
 test('liveTools: 未注册时报「改写指向不存在的工具」', () => {
   const { diagText, cleanup } = setup({ rewrite: { [TOOL]: '我的说明' } });
-  assert.match(diagText(), /暂不生效|指向不存在的工具/, '工具从没注册过，应报这条');
+  assert.match(diagText(), /当前不在线|暂不生效|指向不存在的工具/, '工具从没注册过，应报这条');
   cleanup();
 });
 
 test('liveTools: 注册后该诊断消失', () => {
   const { ctx, diagText, cleanup } = setup({ rewrite: { [TOOL]: '我的说明' } });
   ctx.tools.register({ name: TOOL, description: 'x', parameters: {}, output: { schema: {}, render() { return []; } } });
-  assert.doesNotMatch(diagText(), /暂不生效|指向不存在的工具/, '工具已在线，不该再报');
+  assert.doesNotMatch(diagText(), /当前不在线|暂不生效|指向不存在的工具/, '工具已在线，不该再报');
   cleanup();
 });
 
 test('liveTools: 注销后该诊断必须重现（修复前永不重现）', () => {
   const { ctx, diagText, cleanup } = setup({ rewrite: { [TOOL]: '我的说明' } });
   const dispose = ctx.tools.register({ name: TOOL, description: 'x', parameters: {}, output: { schema: {}, render() { return []; } } });
-  assert.doesNotMatch(diagText(), /暂不生效|指向不存在的工具/, '前置：注册后不报');
+  assert.doesNotMatch(diagText(), /当前不在线|暂不生效|指向不存在的工具/, '前置：注册后不报');
 
   dispose();
 
-  assert.match(diagText(), /暂不生效|指向不存在的工具/, '注销后必须重新报出来');
+  assert.match(diagText(), /当前不在线|暂不生效|指向不存在的工具/, '注销后必须重新报出来');
   cleanup();
 });
 
@@ -77,10 +77,10 @@ test('liveTools: 同名注册两次，注销一次仍算在线', () => {
   const d2 = ctx.tools.register({ name: TOOL, description: 'b', parameters: {}, output: { schema: {}, render() { return []; } } });
 
   d1();
-  assert.doesNotMatch(diagText(), /暂不生效|指向不存在的工具/, '还有一份注册在，应算在线');
+  assert.doesNotMatch(diagText(), /当前不在线|暂不生效|指向不存在的工具/, '还有一份注册在，应算在线');
 
   d2();
-  assert.match(diagText(), /暂不生效|指向不存在的工具/, '两份都注销后才算不在');
+  assert.match(diagText(), /当前不在线|暂不生效|指向不存在的工具/, '两份都注销后才算不在');
   cleanup();
 });
 
@@ -90,6 +90,6 @@ test('liveTools: 重复调用同一个 disposer 不会把计数退成负数', ()
   disposer();
   disposer();
   disposer();
-  assert.match(diagText(), /暂不生效|指向不存在的工具/, '退多了也只是不在线，不该抛错或复活');
+  assert.match(diagText(), /当前不在线|暂不生效|指向不存在的工具/, '退多了也只是不在线，不该抛错或复活');
   cleanup();
 });

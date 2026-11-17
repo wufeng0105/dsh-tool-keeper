@@ -37,7 +37,7 @@ function setup(config, registerImpl) {
   const { ctx, provided } = makeHost(registerImpl);
   apply(ctx, { configPath });
   const diagText = () => ((provided.tool_keeper.status().diagnostics) ?? []).map(d => d.message).join(' | ');
-  const unreachable = () => /暂不生效|指向不存在的工具/.test(diagText());
+  const unreachable = () => /当前不在线|暂不生效|指向不存在的工具/.test(diagText());
   return { ctx, diagText, unreachable, cleanup: () => rmSync(dir, { recursive: true, force: true }) };
 }
 

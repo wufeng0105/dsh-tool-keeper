@@ -450,24 +450,40 @@ export class ToolCatalog {
 }
 
 /**
- * 诊断：找出配置里那些「写了但从没匹配到任何工具」的条目。
- * 静默失效的过滤器比没有过滤器更坏（见 docs/KNOWN-ISSUES.md 前两条）。
+ * 诊断：找出配置里那些「写了但不可能生效」的条目。
+ * 静默失效的过滤器比没有过滤器更坏（见 docs/KNOWN-ISSUES.md 前几条）。
  *
- * 只用「配置事实 + 本次实际见过的工具名」判断，不猜测宿主当前有哪些服务器：
- * 判断不了的情况（改名 vs 未连接）合并成一条警告，并说清用户能做什么。
+ * ## 两个名字集合，语义不同，不能混用
+ *
+ * - `seenNames`：**见过**的工具名。判断「这个名字是否存在过」。
+ *   被 drop 的工具按设计不会注册，但它们确实存在——所以这个集合必须包含它们，
+ *   否则那些有意关掉的工具会被误报成「名字对不上（可能改名了）」。
+ * - `liveNames`：**此刻在线**的工具名。判断「这台服务器连上了没有」。
+ *   服务器断开后它的工具全部注销，但名字仍然「见过」。
+ *
+ * 早期版本只有一个集合，两种语义挤在一起：只传在线名会把被 drop 的规则全报成
+ * 失效；只传见过的名则永远发现不了服务器已断开。所以拆成两个。
  *
  * @param rules - 归一化后的规则
- * @param seenNames - 本次运行中实际见过的工具名
+ * @param seenNames - 曾经注册过的工具名（含被 drop 的）
+ * @param liveNames - 此刻真正注册着的工具名；省略时按 seenNames 处理
  * @returns {{ kind: string, target: string, message: string }[]}
  */
-export function diagnose(rules, seenNames) {
+export function diagnose(rules, seenNames, liveNames) {
   const out = [];
   const seen = new Set(seenNames || []);
+  // 不传就退回 seen：老调用方（只关心「见过什么」的测试）仍然照旧工作。
+  const live = new Set(liveNames === undefined ? (seenNames || []) : liveNames);
 
   const seenServers = new Set();
   for (const n of seen) {
     const p = splitMcpName(n);
     if (p !== undefined) seenServers.add(p.server);
+  }
+  const liveServers = new Set();
+  for (const n of live) {
+    const p = splitMcpName(n);
+    if (p !== undefined) liveServers.add(p.server);
   }
   const serverOf = name => {
     const p = splitMcpName(name);
@@ -508,7 +524,9 @@ export function diagnose(rules, seenNames) {
   for (const [server, names] of overridesByServer) {
     const missing = names.filter(n => !seen.has(n));
     if (missing.length === 0) continue;
-    if (server !== 'core' && !seenServers.has(server)) {
+    // 「这台服务器连上了没有」要看在线名，不是见过的名：停用服务器的工具
+    // 本来就全部不注册，用见过的名永远判不出它已断开。
+    if (server !== 'core' && !liveServers.has(server)) {
       out.push({
         kind: 'warning',
         target: `servers.${server}`,
@@ -534,7 +552,7 @@ export function diagnose(rules, seenNames) {
   for (const [server, names] of rewritesByServer) {
     const missing = names.filter(n => !seen.has(n));
     if (missing.length > 0) {
-      if (server !== 'core' && !seenServers.has(server)) {
+      if (server !== 'core' && !liveServers.has(server)) {
         out.push({
           kind: 'warning',
           target: `servers.${server}`,
@@ -551,6 +569,16 @@ export function diagnose(rules, seenNames) {
     // 工具存在但永远不会执行到改写：说出来，别让它静默失效
     for (const name of names) {
       if (!seen.has(name)) continue;
+      // 见过、但此刻不在线：改写同样用不上。
+      // 不报的话就是静默——用户以为改写在生效，实际那个工具根本没注册。
+      if (!live.has(name)) {
+        out.push({
+          kind: 'warning',
+          target: 'rewrite.' + name,
+          message: `工具 ${name} 当前不在线，这条改写暂时用不上（它重新注册后会自动生效）`,
+        });
+        continue;
+      }
       const verdict = decide(name, rules);
       if (verdict.action === 'drop') {
         out.push({
