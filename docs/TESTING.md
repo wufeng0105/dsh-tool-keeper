@@ -11,16 +11,17 @@ npm install    # ui.test.js 要真的渲染组件，不是看源码字符串
 npm test
 ```
 
-240 条，分六组：
-
 | 文件 | 测什么 |
 |---|---|
-| `tests/rules.test.js` | 纯函数核心：配置解析（含 servers.<名>.rewrite）、判定优先级、参数改写、诊断 |
+| `tests/rules.test.js` | 纯函数核心：配置解析、判定优先级、参数改写、诊断 |
 | `tests/index.test.js` | 宿主半：补丁安装与还原、失败可见、冻结服务 |
-| `tests/instructions.test.js` | 说明页半边：段落移除/改写/原文捕获、名单重写、格式漂移 fail-open、监听器安装/摘除 |
-| `tests/tool.test.js` | 模型工具 `tool_keeper` 的六个 action（含 `server` 的开关与说明页改写） |
+| `tests/instructions.test.js` | 说明页半边：段落移除/改写/原文捕获、名单重写、格式漂移 fail-open |
+| `tests/tool.test.js` | 模型工具 `tool_keeper` 的六个 action |
 | `tests/api.test.js` | HTTP 接口：同源校验、写前校验、指纹比对 |
 | `tests/ui.test.js` | 设置页：用 react 离线渲染真实 HTML 并断言结构 |
+| `tests/live-tools.test.js` | 注册计数：同名多次、disposer 幂等、thenable、注销递减 |
+
+条数以 `npm test` 输出为准，本文不复述。
 
 ---
 
@@ -46,14 +47,9 @@ assert.ok(html.includes('aria-expanded="true"'));
 const openBtn = html.match(/<button[^>]*aria-expanded="true"[^>]*>mcp__tinyfish__search</);
 ```
 
-同类陷阱：断言「页面含『已停用』」时，行级副标题「服务器已停用」也含这三个字。要锚定专属结构（如 `.tw-count`）。
+同类陷阱：断言「页面含『已停用』」时，行级副标题「服务器已停用」也含这三个字。要锚定专属结构。
 
-### 怎么做
-
-每改一条断言，就故意改坏它守护的实现，确认变红后还原。
-交付说明里列出本轮的变异组；不写「N 个变异全捕获」这类无法当场复核的数字。
-
-**变异必须真的改变行为。** 往代码里加一句注释、改个无关的常量，测试当然还是绿的——那不是断言无效，是变异无效。判断方法：变异后先想「这条断言该红吗」，该红却没红才是问题。
+**变异必须真的改变行为。** 往代码里加一句注释、改个无关常量，测试当然还是绿的——那不是断言无效，是变异无效。判断方法：变异后先想「这条断言该红吗」，该红却没红才是问题。
 
 ---
 
@@ -69,24 +65,24 @@ const openBtn = html.match(/<button[^>]*aria-expanded="true"[^>]*>mcp__tinyfish_
 
 ### 判定方式
 
-**用名字集合断言，不用数量。** 数量随装了哪些 MCP 服务器变化；写「应该是 105 个」换台机器就红。
+**用名字集合断言，不用数量。** 数量随装了哪些 MCP 服务器变化；写死一个数字换台机器就红。
 
 | # | 验什么 | 怎么判 |
 |---|---|---|
 | A1 | 装得上 | `install_bundle` 返回 `application: applied`。冒烟，证明力有限 |
-| A2 | 隐藏生效 | 配置了隐藏集合 H → `listTools` 名字集合 == 基线 − H |
+| A2 | 隐藏生效 | 配置隐藏集合 H → `listTools` 名字集合 == 基线 − H |
 | A3 | 改写生效 | 改某工具说明 → `listTools` 里该工具的 `description` == 改写文本 |
-| A4 | 工具仍可用 | 改写后真的调用成功。**只证明没把结构改坏，不能证明改写质量** |
+| A4 | 工具仍可用 | 改写后真的调用成功。**只证明没把结构改坏，不证明改写质量** |
 | A5 | 冷启动生效 | **完整重启宿主进程**（不是刷新、不是热重载）→ 集合仍 == 基线 − H 且改写文本仍在 |
 | A6 | 保护生效 | ①界面尝试关 `read` → 被拒且有提示 ②手改配置加入 → 仍不被隐藏且报错 |
 | A7 | 还原生效 | ①清空配置 → 集合 == 基线 ②卸载插件 → 集合 == 基线 |
 | A8 | 诊断可见 | 两种态分别验证（见下） |
 | A9 | 配置损坏不锁死 | 写坏成半截 JSON → DSH 正常启动、集合 == 基线、界面报错 |
-| A10 | 服务器开关 | 关某台 → 该台工具全部消失；开回来 → 单工具规则原样生效（可见集合与关闭前一致） |
+| A10 | 服务器开关 | 关某台 → 该台工具全部消失；开回来 → 单工具规则原样生效 |
 | A11 | 插件级停用 | 在 DSH 插件页停用 → 不装补丁、全部工具放行 |
-| B1 | 说明页过滤（工具侧对照） | 关某台 MCP → 新会话的 `system/message` 里既没有它的说明段，名单数组里也没有它的名字；同一会话 `listTools` 该台工具全消失 |
-| B2 | 两半一起恢复 | 重新启用 → 新会话里名单恢复含该名字、说明段回来，工具集合与关闭前一致 |
-| B3 | 服务器说明页改写 | 写 `servers.<名>.rewrite` → 重启 → **新会话** `system/message` 里：含改写文本、不含 `### MCP server: <名>`（整段替换的直接后果）；清空后重启 → 标题与原文回来 |
+| B1 | 说明页过滤 | 关某台 MCP → 新会话 `system/message` 里没有它的说明段，名单数组里也没有它的名字 |
+| B2 | 两半一起恢复 | 重新启用 → 新会话里名单恢复、说明段回来，工具集合与关闭前一致 |
+| B3 | 说明页改写 | 写 `servers.<名>.rewrite` → 重启 → **新会话** `system/message` 里含改写文本、不含 `### MCP server: <名>` |
 
 B1–B3 的取数位置都是新会话 JSONL 的 `system/message` 事件（`data.message.content` 里的 text 块），不是 LLM 请求体里的 tools。**必须新会话**：宿主恢复旧会话时会重放旧内容，旧日志的时间戳会被刷新，拿它判会误报。
 
@@ -103,25 +99,26 @@ Invoke-WebRequest -Uri "http://127.0.0.1:<端口>/tool-keeper/api" -Method Post 
 | 字段 | 含义 |
 |---|---|
 | `patched` | 补丁装上了没。`false` 说明插件没在工作 |
-| `stale` | 三态。`true` = 磁盘配置与内存里用的不同（改了没重启，或文件被外部改动过）；`false` = 一致；`null` = 无法判定，读不到可作基准的配置。**`null` 不是 `false`**，页面不能把「不知道」显示成「没问题」 |
-| `reason` | `patched: false` 时的原因。页面和 `tool_keeper` 的 status 都读它 |
+| `reason` | `patched: false` 时的原因。界面与 `tool_keeper` 都读它 |
+| `stale` | 三态。`true` = 磁盘与启动时不同；`false` = 一致；`null` = 读不到基准，无法判定。**`null` 不是 `false`** |
 | `groups[].roles[].effective` | 引擎的实际判定（keep / drop），页面开关以此为准 |
+| `groups[].roles[].live` | 宿主此刻是否真的注册着它。与目录条数不是一回事 |
 | `groups[].roles[].source` | 判定来自哪层规则：`protected` / `tool` / `server-disabled` / `rewrite` / `none` |
-| `rules.disabledServers` | 停用的服务器集合，页面服务器开关以此为准 |
-| `instructions` | 说明页半边的运行时事实：`installed`（监听器装上没）、`removed`（**最近一次组装**里真的被移除的服务器名）、`rewritten`（真的被替换过的）、`texts`（各服务器原始说明；**只给设置页**，`tool_keeper` 的 status 不含它） |
+| `rules.disabledServers` | 停用的服务器集合 |
+| `instructions` | 说明页半边的运行时事实：`installed`、`removed`、`rewritten`、`texts`（原文只给设置页） |
 
 **注意**：探测不存在的路径返回 **405 而不是 404**（见 [HOST-CONTRACT](./HOST-CONTRACT.md)）。看到 405 不代表路由存在，要拿明确不存在的路径做对照。
 
 ### A8 的两种态
 
-诊断只依赖「配置事实 + 本次实际见到的工具名」，不猜宿主有哪些服务器：
+诊断只依赖「配置事实 + 见过的工具名」，不看在线状态：
 
 | 情形 | 判定 | 界面 |
 |---|---|---|
-| 配置了某服务器，但当前没有它的工具出现 | 警告 | 黄色「规则暂不生效（未连接或已移除，规则会保留）」 |
-| 规则里的条目匹配不到工具 | 警告 | 黄色「工具不存在（可能改名）」 |
+| 规则或改写指向一个从没出现过的名字 | 警告 | 黄色「N 条规则指向不存在的工具」 |
+| 改写落在被隐藏或受保护的工具上 | 警告 | 黄色「改写它不会生效」 |
 
-改写落在被隐藏或受保护的工具上时，另有明确提示「不会生效」。
+服务器未连接、工具离线**不产生诊断**——那是正常状态。
 
 ---
 
@@ -152,9 +149,11 @@ Slots.listSubTree({ root: 'settings.section' })
 
 ### 页面状态必须与引擎一致
 
-把开关显示改成读 `effective` 之后，写回路径若还读配置里的条目，被服务器规则关掉的行在配置里没有条目，点开关会写成 `drop`（再关一次），从界面永远打不开那类工具。
+开关显示读 `effective`，写回路径若还读配置里的条目，被服务器规则关掉的行在配置里没有条目，点开关会写成 `drop`（再关一次），从界面永远打不开那类工具。
 
-**防线**：写配置的两个交互都抽成纯函数单独测——`nextToolsAfterToggle`（工具开关）与 `nextServersAfterRewrite`（服务器说明页改写，含「条目全空才删整条」）。断言里明确写「引擎判定为 drop 时，点击意图是打开，必须写 keep」。读写两侧必须一起检查。
+**防线**：写配置的两个交互都抽成纯函数单独测——`nextToolsAfterToggle` 与 `nextServersAfterRewrite`（含「条目全空才删整条」）。断言里明确写「引擎判定为 drop 时，点击意图是打开，必须写 keep」。读写两侧必须一起检查。
+
+**目录数与在线数是两个值。** 目录（`catalog`）记的是「见过哪些工具」，只增不减；`live` 记的是「此刻注册着」。页面两者不等时要说出来，否则用户会以为断线服务器的工具也能用。
 
 ---
 
@@ -164,9 +163,11 @@ Slots.listSubTree({ root: 'settings.section' })
 node <plugin-kit>/skills/plugin-kit/scripts/preflight.mjs .
 ```
 
-稳态输出 **7 PASS / 0 FAIL / 2 UNVERIFIABLE**，两项的原因与结论见 [KNOWN-ISSUES.md](./KNOWN-ISSUES.md) 第十一节。**不要把 UNVERIFIABLE 写成 PASS。**
+插件包通常位于 `~/.dsh/profiles/<profile>/node_modules/@wufeng0105/dsh-plugin-kit`。
 
-另外三项体检（升级 DSH 后必跑）：
+稳态输出 **7 PASS / 0 FAIL / 2 UNVERIFIABLE**，两项的原因与结论见 [KNOWN-ISSUES.md](./KNOWN-ISSUES.md) 第十二节。**不要把 UNVERIFIABLE 写成 PASS。**
+
+升级 DSH 后另跑三道体检：
 
 ```bash
 node <plugin-kit>/scripts/recheck.mjs --self-test   # 先证明它会红
@@ -209,11 +210,12 @@ npm run check-rewrites -- <listTools快照.json> ~/.dsh/tool-keeper.json
 
 | 纪律 | 为什么 |
 |---|---|
-| 不要把「测试全绿」当成「验收通过」 | 功能错误的版本也全绿过，教训不变 |
+| 不要把「测试全绿」当成「验收通过」 | 功能错误的版本也全绿过 |
 | 不要把「无法判定」写成「通过」 | 判不了就说判不了，写清证据到哪一层 |
-| **判不了的时候，先怀疑自己的查法** | 把「精确查询失败」记成「宿主不支持 input 传参」过，实际是用法写错了。见 HOST-CONTRACT「怎么查」 |
-| **文档里的行号引用会被代码改动冲掉** | 引用代码位置用函数名而非行号，或每轮改动后复查 |
-| 不要在没跑过的情况下把命令写进文档 | 命令会过期，写之前先跑一遍 |
+| **判不了的时候，先怀疑自己的查法** | 把「精确查询失败」记成「宿主不支持 input 传参」过，实际是用法写错了 |
+| **文档里的行号引用会被代码改动冲掉** | 引用代码位置用函数名而非行号 |
+| 不要在没跑过的情况下把命令写进文档 | 命令会过期 |
+| 不要在没核实的情况下写数字 | 数字比命令更容易看过期 |
 | 改动读写两侧时必须都检查 | 只改一半会造出「点了没反应」的 bug |
 | 不要用两字母前缀做全局替换 | `tw-` → `tk-` 时误伤了 `ToolwardenView`，63 个测试变红 |
 | 测试里断言 CSS 字符串要谨慎 | 样式一改就红，但改坏了未必红。能用行为断言就别数样式 |

@@ -228,8 +228,7 @@ const paramFixture = () => ({
 
 test('rewriteParameterDescriptions: 替换指定参数的说明', () => {
   const params = paramFixture();
-  const { parameters, applied, missing } = rewriteParameterDescriptions(params, new Map([['ttl', '缓存秒数']]));
-  assert.deepEqual(applied, ['ttl']);
+  const { parameters, missing } = rewriteParameterDescriptions(params, new Map([['ttl', '缓存秒数']]));
   assert.deepEqual(missing, []);
   assert.equal(parameters.properties.ttl.description, '缓存秒数');
   assert.equal(parameters.properties.urls.description, 'Array of URLs to fetch', '未指定的参数不得改动');
@@ -246,8 +245,7 @@ test('rewriteParameterDescriptions: 结构字段一个不动（DESIGN「只改�
 
 test('rewriteParameterDescriptions: 不存在的参数记入 missing，不抛', () => {
   const params = paramFixture();
-  const { parameters, applied, missing } = rewriteParameterDescriptions(params, new Map([['nope', 'x']]));
-  assert.deepEqual(applied, []);
+  const { parameters, missing } = rewriteParameterDescriptions(params, new Map([['nope', 'x']]));
   assert.deepEqual(missing, ['nope']);
   assert.equal(parameters, params, '全未命中时应返回原对象');
 });

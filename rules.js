@@ -306,17 +306,16 @@ export function decide(name, rules) {
  *
  * @param parameters - 原始 parameters 对象
  * @param overrides - Map<参数名, 新说明>
- * @returns {{ parameters: object, applied: string[], missing: string[] }}
+ * @returns {{ parameters: object, missing: string[] }}
  */
 export function rewriteParameterDescriptions(parameters, overrides) {
-  const applied = [];
   const missing = [];
   if (parameters === null || typeof parameters !== 'object' || overrides.size === 0) {
-    return { parameters, applied, missing: [...overrides.keys()] };
+    return { parameters, missing: [...overrides.keys()] };
   }
   const properties = parameters.properties;
   if (properties === null || typeof properties !== 'object') {
-    return { parameters, applied, missing: [...overrides.keys()] };
+    return { parameters, missing: [...overrides.keys()] };
   }
 
   let next;
@@ -338,9 +337,8 @@ export function rewriteParameterDescriptions(parameters, overrides) {
       next = { ...parameters, properties: { ...properties } };
     }
     next.properties[param] = { ...node, description: text };
-    applied.push(param);
   }
-  return { parameters: next === undefined ? parameters : next, applied, missing };
+  return { parameters: next === undefined ? parameters : next, missing };
 }
 
 /**
